@@ -23,9 +23,10 @@ Set the resulting URL as the **Interactions Endpoint URL** in the Discord Develo
 | File | Role |
 |---|---|
 | `app.js` | Express server — dispatches `PING`, `APPLICATION_COMMAND`, `MESSAGE_COMPONENT` |
-| `game.js` | RPS game logic — `RPSChoices` map, `getResult()`, `getShuffledOptions()` |
 | `commands.js` | One-shot script to bulk-overwrite global slash commands |
 | `utils.js` | `DiscordRequest()`, `InstallGlobalCommands()`, `getRandomEmoji()`, `capitalize()` |
+| `api/api.js` | LLM client — `askLLM()`, `askAndRespond()` |
+| `api/discord.js` | Discord API helpers — `logChannelMessages()`, `editInteractionResponse()` |
 
 Per-file summaries are in `.claude/context/`.
 
@@ -47,6 +48,24 @@ Per-file summaries are in `.claude/context/`.
 1. User runs `/challenge object:<x>` → stored in `activeGames[interactionId]`, Accept button sent
 2. Opponent clicks Accept → ephemeral select menu (`select_choice_<gameId>`) sent, original message deleted
 3. Opponent selects → `getResult()` called, result posted publicly, game entry deleted
+
+**`res.send` must be called inside each try/catch branch.** Discord interactions expire quickly — if `res.send` is placed after a try/catch block and the request throws, the interaction times out with no response. Always call `res.send` (or `return res.send`) in both the `try` and the `catch` branches independently:
+```js
+// Correct
+try {
+  const result = await someAsyncCall();
+  return res.send({ ... result ... });
+} catch (err) {
+  return res.send({ ... fallback ... });
+}
+// Wrong
+try {
+  result = await someAsyncCall();
+} catch (err) {
+  result = fallback;
+}
+return res.send({ ... result ... }); // interaction may have already expired
+```
 
 **`/ask` LLM flow:**
 1. User runs `/ask message:<text>` → bot POSTs `{ message }` to `LLM_URL/chat` (raptor-llm)

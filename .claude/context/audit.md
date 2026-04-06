@@ -1,36 +1,43 @@
-# 🔍 Audit Summary — Raptor Chatbot
-**Date:** April 6, 2026
+# Audit Summary — Raptor Chatbot
+**Latest run:** April 6, 2026 (run 3)
 
 ---
 
-## 🚨 What we found (and already fixed!)
+## Run 3 — Language consistency pass
 
-### ✅ Critical bug — Bot commands were broken
-A code auto-formatter accidentally deleted the definition of the `/test` command from the registration script. The script was referencing a variable that no longer existed, which would cause a crash every time someone tried to re-register commands with Discord.
+All source files audited for English-only compliance and stale documentation.
 
-**Fixed:** The `/test` command definition was restored. The `/challenge` command was cleanly removed from registration since its handler was already disabled — registering a command the bot doesn't respond to would just confuse users.
+### Fixed
+
+- **Portuguese strings in `app.js`** — user-facing messages translated to English
+- **Portuguese log messages in `api/discord.js`** — all `console.log` and `console.error` calls translated
+- **Portuguese command descriptions in `commands.js`** — `/logchannel`, `/ask`, and the `message` option now have English descriptions
+- **Architecture table in `copilot-instructions.md`** — removed deleted `game.js`; added `api/api.js` and `api/discord.js`
+- **Stale context files** — `ask-llm.md` and `app.md` updated to reflect deferred response pattern and current command behavior
 
 ---
 
-## 📋 Everything else looks healthy
+## Health check
 
 | Area | Status | Notes |
 |------|--------|-------|
-| Discord message format | ✅ Good | All responses use the modern Components V2 format |
-| ESM module style | ✅ Good | Consistent use of `import`/`export` throughout |
-| Error handling in `/ask` | ✅ Good | LLM errors return a friendly message instead of crashing |
-| In-memory game state | ✅ Good | No accidental persistence introduced |
-| Unknown command handling | ✅ Good | Falls through gracefully with a 400 response |
+| Discord message format | ✅ Good | All responses use Components V2 |
+| ESM module style | ✅ Good | Consistent `import`/`export` throughout |
+| Error handling in `/ask` | ✅ Good | LLM errors return English fallback message |
+| Deferred response pattern | ✅ Good | `/ask` returns immediately, PATCH sent after LLM responds |
+| No try/catch in `app.js` | ✅ Good | All error handling isolated to `api/` modules |
+| Unknown command handling | ✅ Good | Falls through with a clean 400 response |
 
 ---
 
-## 💡 Low-priority notes (no action needed now)
+## Still open (low priority)
 
-- **Markdown echo in `/ask`:** The user's message is displayed back verbatim in Discord. Not a security risk, just worth knowing.
-- **Ephemeral message patch:** A minor style inconsistency in how a follow-up message is sent — doesn't affect functionality.
+- **`/logchannel` always shows success** — even if Discord fetch silently fails, user sees a success message. Low impact — only affects admins.
+- **Unused `capitalize` in `utils.js`** — harmless leftover from the removed RPS game. Safe to delete if challenge feature is permanently retired.
 
 ---
 
-## 📌 Next steps
-- Run `yarn register` to push the fixed command list to Discord
-- Consider re-enabling `/challenge` if the RPS game is wanted back
+## History
+- **Run 1** — Restored deleted `TEST_COMMAND`; removed dead `CHALLENGE_COMMAND`
+- **Run 2** — Fixed crash from missing `game.js`; cleaned up `activeGames` state
+- **Run 3** — English-only pass; stale docs updated

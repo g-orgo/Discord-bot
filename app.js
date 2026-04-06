@@ -1,237 +1,143 @@
 import {
-  InteractionResponseFlags,
-  InteractionResponseType,
-  InteractionType,
-  MessageComponentTypes,
-  verifyKeyMiddleware
-} from 'discord-interactions';
-import 'dotenv/config';
-import express from 'express';
-import { DiscordRequest, getRandomEmoji } from './utils.js';
+    InteractionResponseFlags,
+    InteractionResponseType,
+    InteractionType,
+    MessageComponentTypes,
+    verifyKeyMiddleware,
+} from "discord-interactions";
+import "dotenv/config";
+import express from "express";
+import { getRandomEmoji } from "./utils.js";
+import { askAndRespond } from "./api/api.js";
+import { logChannelMessages } from "./api/discord.js";
 
 // Create an express app
 const app = express();
 // Get port, or default to 3000
 const PORT = process.env.PORT || 3000;
 
-// Store for in-progress games. In production, you'd want to use a DB
-const activeGames = {};
-
 /**
  * Interactions endpoint URL where Discord will send HTTP requests
  * Parse request body and verifies incoming requests using discord-interactions package
  */
-app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async function (req, res) {
-  // Interaction type and data
-  const { type, id, data } = req.body;
+app.post(
+    "/interactions",
+    verifyKeyMiddleware(process.env.PUBLIC_KEY),
+    async function (req, res) {
+        // Interaction type and data
+        const { type, id, data } = req.body;
 
-  // Log who sent this interaction (member for guilds, user for DMs/GDMs)
-  const sender = req.body.member?.user ?? req.body.user;
-  if (sender) {
-    console.log(`[interaction] sender: ${sender.username}#${sender.discriminator} (id: ${sender.id})`);
-  }
-
-  /**
-   * Handle verification requests
-   */
-  if (type === InteractionType.PING) {
-    return res.send({ type: InteractionResponseType.PONG });
-  }
-
-  /**
-   * Handle slash command requests
-   * See https://discord.com/developers/docs/interactions/application-commands#slash-commands
-   */
-  if (type === InteractionType.APPLICATION_COMMAND) {
-    const { name } = data;
-
-    // "logchannel" command
-    if (name === 'logchannel') {
-      const channelId = req.body.channel_id;
-      try {
-        const messagesRes = await DiscordRequest(`channels/${channelId}/messages?limit=50`, { method: 'GET' });
-        const messages = await messagesRes.json();
-        console.log(`[logchannel] Últimas ${messages.length} mensagens do canal ${channelId}:`);
-        for (const msg of messages) {
-          console.log(`  [${new Date(msg.timestamp).toISOString()}] ${msg.author.username}#${msg.author.discriminator}: ${msg.content}`);
+        // Log who sent this interaction (member for guilds, user for DMs/GDMs)
+        const sender = req.body.member?.user ?? req.body.user;
+        if (sender) {
+            console.log(
+                `[interaction] sender: ${sender.username}#${sender.discriminator} (id: ${sender.id})`,
+            );
         }
-      } catch (err) {
-        console.error('[logchannel] Erro ao buscar mensagens:', err);
-      }
-      return res.send({
-        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        data: {
-          flags: InteractionResponseFlags.IS_COMPONENTS_V2 | InteractionResponseFlags.EPHEMERAL,
-          components: [
-            {
-              type: MessageComponentTypes.TEXT_DISPLAY,
-              content: 'As mensagens recentes do canal foram logadas no console.',
-            },
-          ],
-        },
-      });
-    }
 
-    // "ask" command — sends message to raptor-llm /chat
-    if (name === 'ask') {
-      const message = data.options[0].value;
-      const llmUrl = process.env.LLM_URL || 'http://localhost:8000';
+        /**
+         * Handle verification requests
+         */
+        if (type === InteractionType.PING) {
+            return res.send({ type: InteractionResponseType.PONG });
+        }
 
-      let llmResponse;
-      try {
-        const response = await fetch(`${llmUrl}/chat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message }),
-        });
-        if (!response.ok) throw new Error(`LLM returned ${response.status}`);
-        const json = await response.json();
-        llmResponse = json.response;
-      } catch (err) {
-        console.error('[ask] Erro ao chamar raptor-llm:', err);
-        llmResponse = 'Ocorreu um erro ao processar sua mensagem. Tente novamente.';
-      }
+        /**
+         * Handle slash command requests
+         * See https://discord.com/developers/docs/interactions/application-commands#slash-commands
+         */
+        if (type === InteractionType.APPLICATION_COMMAND) {
+            const { name } = data;
 
-      return res.send({
-        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        data: {
-          flags: InteractionResponseFlags.IS_COMPONENTS_V2,
-          components: [
-            {
-              type: MessageComponentTypes.TEXT_DISPLAY,
-              content: `**Você:** ${message}\n\n**IA:** ${llmResponse}`,
-            },
-          ],
-        },
-      });
-    }
-
-    // "test" command
-    if (name === 'test') {
-      // Send a message into the channel where command was triggered from
-      return res.send({
-        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        data: {
-          flags: InteractionResponseFlags.IS_COMPONENTS_V2,
-          components: [
-            {
-              type: MessageComponentTypes.TEXT_DISPLAY,
-              // Fetches a random emoji to send from a helper function
-              content: `hello world ${getRandomEmoji()}`
+            // "logchannel" command
+            if (name === "logchannel") {
+                await logChannelMessages(req.body.channel_id);
+                return res.send({
+                    type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                    data: {
+                        flags:
+                            InteractionResponseFlags.IS_COMPONENTS_V2 |
+                            InteractionResponseFlags.EPHEMERAL,
+                        components: [
+                            {
+                                type: MessageComponentTypes.TEXT_DISPLAY,
+                                content:
+                                    "Recent channel messages have been logged to the console.",
+                            },
+                        ],
+                    },
+                });
             }
-          ]
-        },
-      });
-    }
 
-    console.error(`unknown command: ${name}`);
-    return res.status(400).json({ error: 'unknown command' });
-  }
+            // "ask" command — defers immediately, calls LLM in background
+            if (name === "ask") {
+                const message = data.options[0].value;
+                askAndRespond(message, req.body.token);
+                return res.send({
+                    type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+                    data: { flags: InteractionResponseFlags.IS_COMPONENTS_V2 },
+                });
+            }
 
-  /**
-   * Handle requests from interactive components
-   * See https://discord.com/developers/docs/components/using-message-components#using-message-components-with-interactions
-   */
-  if (type === InteractionType.MESSAGE_COMPONENT) {
-    // custom_id set in payload when sending message component
-    const componentId = data.custom_id;
+            // "test" command
+            if (name === "test") {
+                // Send a message into the channel where command was triggered from
+                return res.send({
+                    type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                    data: {
+                        flags: InteractionResponseFlags.IS_COMPONENTS_V2,
+                        components: [
+                            {
+                                type: MessageComponentTypes.TEXT_DISPLAY,
+                                // Fetches a random emoji to send from a helper function
+                                content: `hello world ${getRandomEmoji()}`,
+                            },
+                        ],
+                    },
+                });
+            }
 
-    if (componentId.startsWith('accept_button_')) {
-      // get the associated game ID
-      const gameId = componentId.replace('accept_button_', '');
-      // Delete message with token in request body
-      const endpoint = `webhooks/${process.env.APP_ID}/${req.body.token}/messages/${req.body.message.id}`;
-      try {
-        await res.send({
-          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-          data: {
-            // Indicates it'll be an ephemeral message
-            flags: InteractionResponseFlags.EPHEMERAL | InteractionResponseFlags.IS_COMPONENTS_V2,
-            components: [
-              {
-                type: MessageComponentTypes.TEXT_DISPLAY,
-                content: 'What is your object of choice?',
-              },
-              {
-                type: MessageComponentTypes.ACTION_ROW,
-                components: [
-                  {
-                    type: MessageComponentTypes.STRING_SELECT,
-                    // Append game ID
-                    custom_id: `select_choice_${gameId}`,
-                    options: getShuffledOptions(),
-                  },
-                ],
-              },
-            ],
-          },
-        });
-        // Delete previous message
-        await DiscordRequest(endpoint, { method: 'DELETE' });
-      } catch (err) {
-        console.error('Error sending message:', err);
-      }
-    } else if (componentId.startsWith('select_choice_')) {
-      // get the associated game ID
-      const gameId = componentId.replace('select_choice_', '');
-
-      if (activeGames[gameId]) {
-        // Interaction context
-        const context = req.body.context;
-        // Get user ID and object choice for responding user
-        // User ID is in user field for (G)DMs, and member for servers
-        const userId = context === 0 ? req.body.member.user.id : req.body.user.id;
-        const objectName = data.values[0];
-        // Calculate result from helper function
-        const resultStr = getResult(activeGames[gameId], {
-          id: userId,
-          objectName,
-        });
-
-        // Remove game from storage
-        delete activeGames[gameId];
-        // Update message with token in request body
-        const endpoint = `webhooks/${process.env.APP_ID}/${req.body.token}/messages/${req.body.message.id}`;
-
-        try {
-          // Send results
-          await res.send({
-            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-            data: { 
-              flags: InteractionResponseFlags.IS_COMPONENTS_V2,
-              components: [
-                {
-                  type: MessageComponentTypes.TEXT_DISPLAY,
-                  content: resultStr
-                }
-              ]
-             },
-          });
-          // Update ephemeral message
-          await DiscordRequest(endpoint, {
-            method: 'PATCH',
-            body: {
-              components: [
-                {
-                  type: MessageComponentTypes.TEXT_DISPLAY,
-                  content: 'Nice choice ' + getRandomEmoji()
-                }
-              ],
-            },
-          });
-        } catch (err) {
-          console.error('Error sending message:', err);
+            console.error(`unknown command: ${name}`);
+            return res.status(400).json({ error: "unknown command" });
         }
-      }
-    }
-    
-    return;
-  }
 
-  console.error('unknown interaction type', type);
-  return res.status(400).json({ error: 'unknown interaction type' });
-});
+        /**
+         * Handle requests from interactive components
+         * See https://discord.com/developers/docs/components/using-message-components#using-message-components-with-interactions
+         */
+        if (type === InteractionType.MESSAGE_COMPONENT) {
+            // custom_id set in payload when sending message component
+            const componentId = data.custom_id;
+
+            if (
+                componentId.startsWith("accept_button_") ||
+                componentId.startsWith("select_choice_")
+            ) {
+                // Challenge flow is disabled — game.js was removed. Return graceful error.
+                return res.send({
+                    type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                    data: {
+                        flags:
+                            InteractionResponseFlags.EPHEMERAL |
+                            InteractionResponseFlags.IS_COMPONENTS_V2,
+                        components: [
+                            {
+                                type: MessageComponentTypes.TEXT_DISPLAY,
+                                content: "This challenge is no longer available.",
+                            },
+                        ],
+                    },
+                });
+            }
+
+            return;
+        }
+
+        console.error("unknown interaction type", type);
+        return res.status(400).json({ error: "unknown interaction type" });
+    },
+);
 
 app.listen(PORT, () => {
-  console.log('Listening on port', PORT);
+    console.log("Listening on port", PORT);
 });

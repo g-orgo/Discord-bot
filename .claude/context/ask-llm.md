@@ -3,18 +3,21 @@
 **Date:** 2026-04-06
 
 ## Summary
-Added `/ask` slash command that sends the user's message to raptor-llm's `POST /chat` endpoint and replies with the AI response.
+The `/ask` command sends the user's message to raptor-llm's `POST /chat` endpoint via a deferred interaction pattern to avoid Discord's 3-second timeout. Logic is split across `api/api.js` and `api/discord.js`.
 
-## Files modified
-- `commands.js` — added `ASK_COMMAND` (name: `ask`, option: `message` string, required)
-- `app.js` — added handler for the `ask` command; calls `LLM_URL/chat` via native `fetch`, handles errors gracefully
+## Files
+- `commands.js` — `ASK_COMMAND` (name: `ask`, option: `message` string, required)
+- `app.js` — handler for `ask`; immediately defers with `DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE`, then fires `askAndRespond()` in background
+- `api/api.js` — `askLLM(message)`: POSTs to `LLM_URL/chat`, returns response string (or fallback on error); `askAndRespond(message, token)`: calls LLM then edits the deferred interaction
+- `api/discord.js` — `editInteractionResponse(token, content)`: PATCHes `webhooks/.../messages/@original` with the final content
+
+## Deferred flow
+1. Discord sends `/ask` interaction
+2. `app.js` immediately responds with `DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE` — Discord shows “Bot is thinking...”
+3. `askAndRespond()` runs in background (no timeout pressure)
+4. LLM responds — `editInteractionResponse()` patches the original message with the result
 
 ## Decisions
-- Uses native `fetch` (Node 18+) — no extra dependency needed
-- `LLM_URL` read from `process.env.LLM_URL`, defaults to `http://localhost:8000`
-- On LLM error, returns a user-friendly message instead of crashing
-- Response is formatted as `**Você:** <message>\n\n**IA:** <response>` inside a TEXT_DISPLAY component
-
-## Next steps
-- Run `yarn register` to publish the new `/ask` command to Discord
-- Add `LLM_URL` to `.env`
+- `LLM_URL` read from `process.env.LLM_URL`, default `http://localhost:8000` — defined in `api/api.js`
+- All error handling is inside `api/` modules — `app.js` has zero try/catch
+- Response format: `**You:** <message>\n\n**Raptor:** <llm_response>`

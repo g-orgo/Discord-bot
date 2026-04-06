@@ -2,8 +2,8 @@
 
 Entry point for the Discord bot. Uses Express to receive HTTP POST interactions from Discord.
 
-## Date: 2026-04-06
-## Summary: Audit update — added /ask and /logchannel to dispatch table; challenge handler remains commented out (component handlers still active).
+## Date: 2026-04-06 (audit run 2)
+## Summary: `game.js` was missing from filesystem. Component handlers for `accept_button_*` and `select_choice_*` were calling `getShuffledOptions()` and `getResult()` without importing them — guaranteed ReferenceError crash. Both handlers replaced with a graceful ephemeral "not available" response. `activeGames` removed (dead state).
 
 ## Setup
 - Loads env via `dotenv`
@@ -11,7 +11,7 @@ Entry point for the Discord bot. Uses Express to receive HTTP POST interactions 
 - All requests to `POST /interactions` are verified with `verifyKeyMiddleware(process.env.PUBLIC_KEY)`
 
 ## In-memory state
-- `activeGames` — keyed by interaction ID; stores `{ id: userId, objectName }` for pending challenge games
+- ~~`activeGames`~~ — removed. Challenge flow is disabled and `game.js` does not exist.
 
 ## Interaction dispatch
 
@@ -22,8 +22,8 @@ Returns `PONG` for Discord's endpoint verification.
 
 | Command | Behavior |
 |---|---|
-| `logchannel` | Fetches last 50 messages from the channel via Discord API, logs them to console, replies ephemeral |
-| `ask` | POSTs `{ message }` to `LLM_URL/chat`, replies with user message + AI response as `TEXT_DISPLAY` |
+| `logchannel` | Calls `logChannelMessages()` from `api/discord.js`, replies ephemeral |
+| `ask` | Defers immediately (`DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE`), calls `askAndRespond()` from `api/api.js` in background |
 | `test` | Replies with "hello world" + random emoji using `TEXT_DISPLAY` component |
 | *(challenge)* | Handler is **commented out** — command is not registered |
 
@@ -31,11 +31,14 @@ Returns `PONG` for Discord's endpoint verification.
 
 | custom_id prefix | Behavior |
 |---|---|
-| `accept_button_<gameId>` | Sends ephemeral select menu (`select_choice_<gameId>`), deletes original challenge message |
-| `select_choice_<gameId>` | Calls `getResult()`, posts result publicly, patches ephemeral message with "Nice choice", removes game from `activeGames` |
+| `accept_button_<gameId>` | Returns ephemeral "Este desafio já não está disponível." (game.js removed) |
+| `select_choice_<gameId>` | Returns ephemeral "Este desafio já não está disponível." (game.js removed) |
 
 ## Flags / Components
 All responses use `IS_COMPONENTS_V2` flag. Messages use `TEXT_DISPLAY` components instead of legacy `content` field. Ephemeral responses combine `EPHEMERAL | IS_COMPONENTS_V2`.
+
+## Response timing — res.send inside try/catch
+Discord interaction tokens expire in ~3 seconds. **`res.send` must be called inside each branch of try/catch**, never after. If placed outside and the async call throws, the interaction expires with no response to the user. Both `try` and `catch` blocks must independently call `res.send`.
 
 ## Environment variables
 - `PUBLIC_KEY` — Discord public key for request verification
@@ -45,6 +48,8 @@ All responses use `IS_COMPONENTS_V2` flag. Messages use `TEXT_DISPLAY` component
 - `LLM_URL` — raptor-llm base URL (default `http://localhost:8000`)
 
 ## Imports
-- `discord-interactions`: `InteractionType`, `InteractionResponseType`, `InteractionResponseFlags`, `MessageComponentTypes`, `ButtonStyleTypes`, `verifyKeyMiddleware`
-- `./utils.js`: `getRandomEmoji`, `DiscordRequest`
-- `./game.js`: `getShuffledOptions`, `getResult`
+- `discord-interactions`: `InteractionType`, `InteractionResponseType`, `InteractionResponseFlags`, `MessageComponentTypes`, `verifyKeyMiddleware`
+- `./utils.js`: `getRandomEmoji`
+- `./api/api.js`: `askAndRespond`
+- `./api/discord.js`: `logChannelMessages`
+- ~~`./game.js`~~ — file removed; no longer imported
