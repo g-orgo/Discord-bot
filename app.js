@@ -74,6 +74,40 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       });
     }
 
+    // "ask" command — sends message to raptor-llm /chat
+    if (name === 'ask') {
+      const message = data.options[0].value;
+      const llmUrl = process.env.LLM_URL || 'http://localhost:8000';
+
+      let llmResponse;
+      try {
+        const response = await fetch(`${llmUrl}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message }),
+        });
+        if (!response.ok) throw new Error(`LLM returned ${response.status}`);
+        const json = await response.json();
+        llmResponse = json.response;
+      } catch (err) {
+        console.error('[ask] Erro ao chamar raptor-llm:', err);
+        llmResponse = 'Ocorreu um erro ao processar sua mensagem. Tente novamente.';
+      }
+
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          flags: InteractionResponseFlags.IS_COMPONENTS_V2,
+          components: [
+            {
+              type: MessageComponentTypes.TEXT_DISPLAY,
+              content: `**Você:** ${message}\n\n**IA:** ${llmResponse}`,
+            },
+          ],
+        },
+      });
+    }
+
     // "test" command
     if (name === 'test') {
       // Send a message into the channel where command was triggered from

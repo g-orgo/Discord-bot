@@ -48,9 +48,14 @@ Per-file summaries are in `.claude/context/`.
 2. Opponent clicks Accept → ephemeral select menu (`select_choice_<gameId>`) sent, original message deleted
 3. Opponent selects → `getResult()` called, result posted publicly, game entry deleted
 
+**`/ask` LLM flow:**
+1. User runs `/ask message:<text>` → bot POSTs `{ message }` to `LLM_URL/chat` (raptor-llm)
+2. raptor-llm forwards the message to Ollama and returns `{ model, response }`
+3. Bot replies with the user's message and the AI response formatted as TEXT_DISPLAY
+
 **Adding a new RPS choice:** Update `RPSChoices` in `game.js` symmetrically — add the new key with its `description` and verbs for what it beats, and add it as a losing target in the keys it loses to.
 
-**Required `.env` variables:** `APP_ID`, `PUBLIC_KEY`, `DISCORD_TOKEN`, `PORT` (default 3000).
+**Required `.env` variables:** `APP_ID`, `PUBLIC_KEY`, `DISCORD_TOKEN`, `PORT` (default 3000), `LLM_URL` (default `http://localhost:8000`).
 
 ## Dev Skill (always apply)
 

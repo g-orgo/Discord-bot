@@ -52,6 +52,22 @@ const LOG_CHANNEL_COMMAND = {
   contexts: [0, 2],
 };
 
-const ALL_COMMANDS = [TEST_COMMAND, CHALLENGE_COMMAND, LOG_CHANNEL_COMMAND];
+const ASK_COMMAND = {
+  name: 'ask',
+  description: 'Faz uma pergunta para a IA',
+  options: [
+    {
+      type: 3,
+      name: 'message',
+      description: 'Sua mensagem para a IA',
+      required: true,
+    },
+  ],
+  type: 1,
+  integration_types: [0, 1],
+  contexts: [0, 1, 2],
+};
+
+const ALL_COMMANDS = [TEST_COMMAND, CHALLENGE_COMMAND, LOG_CHANNEL_COMMAND, ASK_COMMAND];
 
 InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);
