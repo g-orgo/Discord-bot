@@ -7,9 +7,8 @@ import {
 } from "discord-interactions";
 import "dotenv/config";
 import express from "express";
-import { getRandomEmoji } from "./utils.js";
 import { askAndRespond, translateChannelMessages } from "./api/api.js";
-import { logChannelMessages, purgeChannel, editInteractionResponse, sendInteractionFollowup } from "./api/discord.js";
+import { purgeChannel, editInteractionResponse } from "./api/discord.js";
 
 // Create an express app
 const app = express();
