@@ -3,8 +3,7 @@
 Entry point for the Discord bot. Uses Express to receive HTTP POST interactions from Discord.
 
 ## Date: 2026-04-06
-## Summary: Added universal sender logging — every incoming interaction logs the sender's username and ID via `console.log` before dispatch, without requiring a specific command.
-## Files modified: `app.js` — added sender log block after `req.body` destructure in `POST /interactions` handler.
+## Summary: Audit update — added /ask and /logchannel to dispatch table; challenge handler remains commented out (component handlers still active).
 
 ## Setup
 - Loads env via `dotenv`
@@ -23,8 +22,10 @@ Returns `PONG` for Discord's endpoint verification.
 
 | Command | Behavior |
 |---|---|
+| `logchannel` | Fetches last 50 messages from the channel via Discord API, logs them to console, replies ephemeral |
+| `ask` | POSTs `{ message }` to `LLM_URL/chat`, replies with user message + AI response as `TEXT_DISPLAY` |
 | `test` | Replies with "hello world" + random emoji using `TEXT_DISPLAY` component |
-| `challenge` | Stores game in `activeGames[id]`, replies with challenger text + **Accept** button (`accept_button_<id>`) |
+| *(challenge)* | Handler is **commented out** — command is not registered |
 
 ### `MESSAGE_COMPONENT`
 
@@ -35,6 +36,13 @@ Returns `PONG` for Discord's endpoint verification.
 
 ## Flags / Components
 All responses use `IS_COMPONENTS_V2` flag. Messages use `TEXT_DISPLAY` components instead of legacy `content` field. Ephemeral responses combine `EPHEMERAL | IS_COMPONENTS_V2`.
+
+## Environment variables
+- `PUBLIC_KEY` — Discord public key for request verification
+- `APP_ID` — Discord application ID
+- `DISCORD_TOKEN` — Bot token (used in DiscordRequest)
+- `PORT` — Server port (default 3000)
+- `LLM_URL` — raptor-llm base URL (default `http://localhost:8000`)
 
 ## Imports
 - `discord-interactions`: `InteractionType`, `InteractionResponseType`, `InteractionResponseFlags`, `MessageComponentTypes`, `ButtonStyleTypes`, `verifyKeyMiddleware`

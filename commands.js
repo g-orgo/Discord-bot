@@ -1,21 +1,5 @@
-import 'dotenv/config';
-import { getRPSChoices } from './game.js';
-import { capitalize, InstallGlobalCommands } from './utils.js';
-
-// Get the game choices from game.js
-function createCommandChoices() {
-  const choices = getRPSChoices();
-  const commandChoices = [];
-
-  for (let choice of choices) {
-    commandChoices.push({
-      name: capitalize(choice),
-      value: choice.toLowerCase(),
-    });
-  }
-
-  return commandChoices;
-}
+import "dotenv/config";
+import { InstallGlobalCommands } from "./utils.js";
 
 // Simple test command
 const TEST_COMMAND = {
@@ -26,48 +10,34 @@ const TEST_COMMAND = {
   contexts: [0, 1, 2],
 };
 
-// Command containing options
-const CHALLENGE_COMMAND = {
-  name: 'challenge',
-  description: 'Challenge to a match of rock paper scissors',
-  options: [
-    {
-      type: 3,
-      name: 'object',
-      description: 'Pick your object',
-      required: true,
-      choices: createCommandChoices(),
-    },
-  ],
-  type: 1,
-  integration_types: [0, 1],
-  contexts: [0, 2],
-};
-
 const LOG_CHANNEL_COMMAND = {
-  name: 'logchannel',
-  description: 'Busca e loga as mensagens recentes do canal no console',
-  type: 1,
-  integration_types: [0, 1],
-  contexts: [0, 2],
+    name: "logchannel",
+    description: "Busca e loga as mensagens recentes do canal no console",
+    type: 1,
+    integration_types: [0, 1],
+    contexts: [0, 2],
 };
 
 const ASK_COMMAND = {
-  name: 'ask',
-  description: 'Faz uma pergunta para a IA',
-  options: [
-    {
-      type: 3,
-      name: 'message',
-      description: 'Sua mensagem para a IA',
-      required: true,
-    },
-  ],
-  type: 1,
-  integration_types: [0, 1],
-  contexts: [0, 1, 2],
+    name: "ask",
+    description: "Faz uma pergunta para a IA",
+    options: [
+        {
+            type: 3,
+            name: "message",
+            description: "Sua mensagem para a IA",
+            required: true,
+        },
+    ],
+    type: 1,
+    integration_types: [0, 1],
+    contexts: [0, 1, 2],
 };
 
-const ALL_COMMANDS = [TEST_COMMAND, CHALLENGE_COMMAND, LOG_CHANNEL_COMMAND, ASK_COMMAND];
+const ALL_COMMANDS = [
+    TEST_COMMAND,
+    LOG_CHANNEL_COMMAND,
+    ASK_COMMAND,
+];
 
 InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);
