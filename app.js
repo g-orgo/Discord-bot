@@ -27,6 +27,12 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
   // Interaction type and data
   const { type, id, data } = req.body;
 
+  // Log who sent this interaction (member for guilds, user for DMs/GDMs)
+  const sender = req.body.member?.user ?? req.body.user;
+  if (sender) {
+    console.log(`[interaction] sender: ${sender.username}#${sender.discriminator} (id: ${sender.id})`);
+  }
+
   /**
    * Handle verification requests
    */
@@ -40,6 +46,33 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
    */
   if (type === InteractionType.APPLICATION_COMMAND) {
     const { name } = data;
+
+    // "logchannel" command
+    if (name === 'logchannel') {
+      const channelId = req.body.channel_id;
+      try {
+        const messagesRes = await DiscordRequest(`channels/${channelId}/messages?limit=50`, { method: 'GET' });
+        const messages = await messagesRes.json();
+        console.log(`[logchannel] Últimas ${messages.length} mensagens do canal ${channelId}:`);
+        for (const msg of messages) {
+          console.log(`  [${new Date(msg.timestamp).toISOString()}] ${msg.author.username}#${msg.author.discriminator}: ${msg.content}`);
+        }
+      } catch (err) {
+        console.error('[logchannel] Erro ao buscar mensagens:', err);
+      }
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          flags: InteractionResponseFlags.IS_COMPONENTS_V2 | InteractionResponseFlags.EPHEMERAL,
+          components: [
+            {
+              type: MessageComponentTypes.TEXT_DISPLAY,
+              content: 'As mensagens recentes do canal foram logadas no console.',
+            },
+          ],
+        },
+      });
+    }
 
     // "test" command
     if (name === 'test') {

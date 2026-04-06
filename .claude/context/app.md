@@ -2,6 +2,10 @@
 
 Entry point for the Discord bot. Uses Express to receive HTTP POST interactions from Discord.
 
+## Date: 2026-04-06
+## Summary: Added universal sender logging — every incoming interaction logs the sender's username and ID via `console.log` before dispatch, without requiring a specific command.
+## Files modified: `app.js` — added sender log block after `req.body` destructure in `POST /interactions` handler.
+
 ## Setup
 - Loads env via `dotenv`
 - Listens on `process.env.PORT` (default 3000)

@@ -31,6 +31,9 @@ After completing the audit, create a report in the `.claude/audits/` directory. 
 ## 5. Create .md file for stakeholders
 Create a summary `.md` file in `e:/raptor/raptor-chatbot/.claude/context` or overwrite the previous one under the name of "audit.md" with a non-technical summary of the audit findings and recommendations for stakeholders who may not be familiar with the technical details. This file should be concise and focus on the key takeaways from the audit, avoiding technical jargon and providing clear explanations of any issues and their potential impact on the project. Also it should be cool and engaging to read, with emojis and a friendly tone to make it more enjoyable for stakeholders to read (add emojis).
 
+## 6. Commit and push changes
+After completing the audit and updating the relevant files, commit all changes to the repository with a clear and descriptive commit message summarizing the audit findings and any modifications made. Then, push the changes to the remote repository to ensure that all stakeholders have access to the latest audit report and any related updates.
+
 
 ---
 
