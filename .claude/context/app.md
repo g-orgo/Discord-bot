@@ -23,6 +23,7 @@ Returns `PONG` for Discord's endpoint verification.
 | Command | Behavior |
 |---|---|
 | `logchannel` | Calls `logChannelMessages()` from `api/discord.js`, replies ephemeral |
+| `translatechannel` | Defers immediately (ephemeral), calls `translateChannelMessages()` from `api/api.js` in background |
 | `ask` | Defers immediately (`DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE`), calls `askAndRespond()` from `api/api.js` in background |
 | `test` | Replies with "hello world" + random emoji using `TEXT_DISPLAY` component |
 | *(challenge)* | Handler is **commented out** — command is not registered |
@@ -50,6 +51,6 @@ Discord interaction tokens expire in ~3 seconds. **`res.send` must be called ins
 ## Imports
 - `discord-interactions`: `InteractionType`, `InteractionResponseType`, `InteractionResponseFlags`, `MessageComponentTypes`, `verifyKeyMiddleware`
 - `./utils.js`: `getRandomEmoji`
-- `./api/api.js`: `askAndRespond`
+- `./api/api.js`: `askAndRespond`, `translateChannelMessages`
 - `./api/discord.js`: `logChannelMessages`
 - ~~`./game.js`~~ — file removed; no longer imported

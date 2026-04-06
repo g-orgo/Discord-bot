@@ -8,8 +8,8 @@ import {
 import "dotenv/config";
 import express from "express";
 import { getRandomEmoji } from "./utils.js";
-import { askAndRespond } from "./api/api.js";
-import { logChannelMessages } from "./api/discord.js";
+import { askAndRespond, translateChannelMessages } from "./api/api.js";
+import { logChannelMessages, purgeChannel, editInteractionResponse } from "./api/discord.js";
 
 // Create an express app
 const app = express();
@@ -49,22 +49,36 @@ app.post(
         if (type === InteractionType.APPLICATION_COMMAND) {
             const { name } = data;
 
-            // "logchannel" command
-            if (name === "logchannel") {
-                await logChannelMessages(req.body.channel_id);
+            // "clearchannel" command — defers immediately, purges all channel messages in background
+            if (name === "clearchannel") {
+                const channelId = req.body.channel_id;
+                const token = req.body.token;
+                purgeChannel(channelId)
+                    .then(async (count) => {
+                        await editInteractionResponse(token, `Done. Deleted ${count} message${count !== 1 ? 's' : ''}.`);
+                    })
+                    .catch(async () => {
+                        await editInteractionResponse(token, 'The bot is missing permissions to access this channel. Make sure it has **Read Message History**, **View Channel**, and **Manage Messages**.');
+                    });
                 return res.send({
-                    type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                    type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
                     data: {
                         flags:
                             InteractionResponseFlags.IS_COMPONENTS_V2 |
                             InteractionResponseFlags.EPHEMERAL,
-                        components: [
-                            {
-                                type: MessageComponentTypes.TEXT_DISPLAY,
-                                content:
-                                    "Recent channel messages have been logged to the console.",
-                            },
-                        ],
+                    },
+                });
+            }
+
+            // "translatechannel" command — defers immediately, translates non-English messages in background
+            if (name === "translatechannel") {
+                translateChannelMessages(req.body.channel_id, req.body.token);
+                return res.send({
+                    type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+                    data: {
+                        flags:
+                            InteractionResponseFlags.IS_COMPONENTS_V2 |
+                            InteractionResponseFlags.EPHEMERAL,
                     },
                 });
             }
@@ -76,24 +90,6 @@ app.post(
                 return res.send({
                     type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
                     data: { flags: InteractionResponseFlags.IS_COMPONENTS_V2 },
-                });
-            }
-
-            // "test" command
-            if (name === "test") {
-                // Send a message into the channel where command was triggered from
-                return res.send({
-                    type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-                    data: {
-                        flags: InteractionResponseFlags.IS_COMPONENTS_V2,
-                        components: [
-                            {
-                                type: MessageComponentTypes.TEXT_DISPLAY,
-                                // Fetches a random emoji to send from a helper function
-                                content: `hello world ${getRandomEmoji()}`,
-                            },
-                        ],
-                    },
                 });
             }
 
@@ -123,7 +119,8 @@ app.post(
                         components: [
                             {
                                 type: MessageComponentTypes.TEXT_DISPLAY,
-                                content: "This challenge is no longer available.",
+                                content:
+                                    "This challenge is no longer available.",
                             },
                         ],
                     },

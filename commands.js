@@ -1,23 +1,6 @@
 import "dotenv/config";
 import { InstallGlobalCommands } from "./utils.js";
 
-// Simple test command
-const TEST_COMMAND = {
-  name: 'test',
-  description: 'Basic command',
-  type: 1,
-  integration_types: [0, 1],
-  contexts: [0, 1, 2],
-};
-
-const LOG_CHANNEL_COMMAND = {
-    name: "logchannel",
-    description: "Fetches and logs recent channel messages to the console",
-    type: 1,
-    integration_types: [0, 1],
-    contexts: [0, 2],
-};
-
 const ASK_COMMAND = {
     name: "ask",
     description: "Ask the AI a question",
@@ -34,10 +17,27 @@ const ASK_COMMAND = {
     contexts: [0, 1, 2],
 };
 
+const TRANSLATE_CHANNEL_COMMAND = {
+    name: "translatechannel",
+    description:
+        "Translate non-English messages in the channel to English in a single message",
+    type: 1,
+    integration_types: [0],
+    contexts: [0],
+};
+
+const CLEAR_CHANNEL_COMMAND = {
+    name: "clearchannel",
+    description: "[DEBUG] Deletes all messages in the current channel",
+    type: 1,
+    integration_types: [0],
+    contexts: [0],
+};
+
 const ALL_COMMANDS = [
-    TEST_COMMAND,
-    LOG_CHANNEL_COMMAND,
     ASK_COMMAND,
+    TRANSLATE_CHANNEL_COMMAND,
+    CLEAR_CHANNEL_COMMAND,
 ];
 
 InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);

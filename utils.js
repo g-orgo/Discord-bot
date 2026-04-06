@@ -5,23 +5,37 @@ export async function DiscordRequest(endpoint, options) {
   const url = 'https://discord.com/api/v10/' + endpoint;
   // Stringify payloads
   if (options.body) options.body = JSON.stringify(options.body);
-  // Use fetch to make requests
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bot ${process.env.DISCORD_TOKEN}`,
-      'Content-Type': 'application/json; charset=UTF-8',
-      'User-Agent': 'DiscordBot (https://github.com/discord/discord-example-app, 1.0.0)',
-    },
-    ...options
-  });
-  // throw API errors
-  if (!res.ok) {
-    const data = await res.json();
-    console.log(res.status);
-    throw new Error(JSON.stringify(data));
+
+  while (true) {
+    // Use fetch to make requests
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bot ${process.env.DISCORD_TOKEN}`,
+        'Content-Type': 'application/json; charset=UTF-8',
+        'User-Agent': 'DiscordBot (https://github.com/discord/discord-example-app, 1.0.0)',
+      },
+      ...options
+    });
+
+    // Retry automatically on rate limit
+    if (res.status === 429) {
+      const data = await res.json();
+      const isGlobal = data.global === true;
+      const retryAfter = (data.retry_after ?? parseFloat(res.headers.get('Retry-After') ?? '1')) * 1000;
+      console.warn(`[DiscordRequest] ${isGlobal ? 'GLOBAL' : 'Route'} rate limit on ${endpoint} — retrying in ${retryAfter}ms`);
+      await new Promise(resolve => setTimeout(resolve, retryAfter));
+      continue;
+    }
+
+    // throw API errors
+    if (!res.ok) {
+      const data = await res.json();
+      console.log(res.status);
+      throw new Error(JSON.stringify(data));
+    }
+
+    return res;
   }
-  // return original response
-  return res;
 }
 
 export async function InstallGlobalCommands(appId, commands) {
