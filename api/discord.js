@@ -78,6 +78,27 @@ export async function purgeChannel(channelId) {
 }
 
 /**
+ * Sends a followup message to a deferred interaction via webhook.
+ * Handles errors internally — never throws.
+ * @param {string} token - The interaction token.
+ * @param {string} content - The message content.
+ * @returns {Promise<void>}
+ */
+export async function sendInteractionFollowup(token, content) {
+  try {
+    await DiscordRequest(`webhooks/${process.env.APP_ID}/${token}`, {
+      method: 'POST',
+      body: {
+        flags: InteractionResponseFlags.IS_COMPONENTS_V2,
+        components: [{ type: MessageComponentTypes.TEXT_DISPLAY, content }],
+      },
+    });
+  } catch (err) {
+    console.error('[sendInteractionFollowup] Error sending followup:', err);
+  }
+}
+
+/**
  * Edits the original deferred interaction response via webhook.
  * Handles errors internally — never throws.
  * @param {string} token - The interaction token.

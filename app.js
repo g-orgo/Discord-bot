@@ -9,7 +9,7 @@ import "dotenv/config";
 import express from "express";
 import { getRandomEmoji } from "./utils.js";
 import { askAndRespond, translateChannelMessages } from "./api/api.js";
-import { logChannelMessages, purgeChannel, editInteractionResponse } from "./api/discord.js";
+import { logChannelMessages, purgeChannel, editInteractionResponse, sendInteractionFollowup } from "./api/discord.js";
 
 // Create an express app
 const app = express();
@@ -76,9 +76,7 @@ app.post(
                 return res.send({
                     type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
                     data: {
-                        flags:
-                            InteractionResponseFlags.IS_COMPONENTS_V2 |
-                            InteractionResponseFlags.EPHEMERAL,
+                        flags: InteractionResponseFlags.IS_COMPONENTS_V2,
                     },
                 });
             }

@@ -1,4 +1,4 @@
-import { editInteractionResponse } from './discord.js';
+import { editInteractionResponse, sendInteractionFollowup } from './discord.js';
 import { DiscordRequest } from '../utils.js';
 
 const LLM_URL = process.env.LLM_URL || 'http://localhost:8000';
@@ -107,12 +107,32 @@ export async function translateChannelMessages(channelId, token) {
       entries.push(`-# **@${msg.author.username}** · <t:${unix}:f> (<t:${unix}:R>)\n> ${msg.content}\n→ *${translation}*`);
     }
 
-    const summary =
-      entries.length === 0
-        ? 'No non-English messages found in the channel.'
-        : `**Non-English messages found:**\n\n${entries.join('\n\n')}`;
+    const LIMIT = 4000;
+    const header = '**Non-English messages found:**';
 
-    await editInteractionResponse(token, summary);
+    if (entries.length === 0) {
+      await editInteractionResponse(token, 'No non-English messages found in the channel.');
+      return;
+    }
+
+    // Build chunks that fit within the 4000-char TEXT_DISPLAY limit
+    const chunks = [];
+    let current = header;
+    for (const entry of entries) {
+      const line = `\n\n${entry}`;
+      if (current.length + line.length > LIMIT) {
+        chunks.push(current);
+        current = entry;
+      } else {
+        current += line;
+      }
+    }
+    chunks.push(current);
+
+    await editInteractionResponse(token, chunks[0]);
+    for (let i = 1; i < chunks.length; i++) {
+      await sendInteractionFollowup(token, chunks[i]);
+    }
   } catch (err) {
     console.error('[translateChannelMessages] Error:', err);
     const msg = isMissingAccess(err) ? MISSING_ACCESS_MESSAGE : 'An error occurred while processing channel messages.';
