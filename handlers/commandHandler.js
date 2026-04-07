@@ -43,7 +43,8 @@ export async function handleCommand(req, res) {
 
   if (name === 'ask') {
     const message = data.options[0].value;
-    askAndRespond(message, req.body.token);
+    const discordUsername = req.body.member?.user?.username ?? req.body.user?.username ?? null;
+    askAndRespond(message, req.body.token, discordUsername);
     return res.send({
       type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
       data: { flags: InteractionResponseFlags.IS_COMPONENTS_V2 },

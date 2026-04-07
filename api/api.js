@@ -2,6 +2,8 @@ import { editInteractionResponse, sendInteractionFollowup } from './discord.js';
 import { DiscordRequest } from '../utils.js';
 
 const LLM_URL = process.env.LLM_URL || 'http://localhost:8000';
+const AUTH_URL = process.env.AUTH_URL || 'http://localhost:3001';
+const DISCORD_BOT_SECRET = process.env.DISCORD_BOT_SECRET || 'raptor-bot-secret-change-in-prod';
 
 function isMissingAccess(err) {
   try { return JSON.parse(err.message)?.code === 50001; } catch { return false; }
@@ -40,11 +42,45 @@ export async function askLLM(message) {
  * Fire-and-forget — does not block the interaction response.
  * @param {string} message - The user's message.
  * @param {string} token - The Discord interaction token.
+ * @param {string|null} discordUsername - Discord username of the sender (for history linking).
  * @returns {Promise<void>}
  */
-export async function askAndRespond(message, token) {
+export async function askAndRespond(message, token, discordUsername = null) {
   const llmResponse = await askLLM(message);
   await editInteractionResponse(token, `**You:** ${message}\n\n**Raptor:** ${llmResponse}`);
+  if (discordUsername) {
+    saveDiscordHistory(discordUsername, message, llmResponse);
+  }
+}
+
+/**
+ * Saves a Discord chat exchange to the auth server, linked by discordUsername.
+ * Fire-and-forget — errors are logged but never thrown.
+ * @param {string} discordUsername
+ * @param {string} userMessage
+ * @param {string} botResponse
+ * @returns {Promise<void>}
+ */
+async function saveDiscordHistory(discordUsername, userMessage, botResponse) {
+  console.log(`[saveDiscordHistory] Saving history for Discord user: ${discordUsername}`);
+  try {
+    const res = await fetch(`${AUTH_URL}/discord/history`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Bot-Secret': DISCORD_BOT_SECRET,
+      },
+      body: JSON.stringify({ discordUsername, userMessage, botResponse }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      console.error(`[saveDiscordHistory] Server responded ${res.status}: ${body}`);
+    } else {
+      console.log(`[saveDiscordHistory] History saved (status ${res.status})`);
+    }
+  } catch (err) {
+    console.error('[saveDiscordHistory] Failed to save history:', err.message);
+  }
 }
 
 /**
