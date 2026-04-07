@@ -19,8 +19,9 @@ app.post(
 
         const sender = req.body.member?.user ?? req.body.user;
         if (sender) {
+            const userTag = sender.discriminator ? `${sender.username}#${sender.discriminator}` : sender.username;
             console.log(
-                `[interaction] sender: ${sender.username}#${sender.discriminator} (id: ${sender.id})`,
+                `[interaction] sender: ${userTag} (id: ${sender.id})`,
             );
         }
 

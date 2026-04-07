@@ -1,7 +1,6 @@
 import {
   InteractionResponseFlags,
   InteractionResponseType,
-  MessageComponentTypes,
 } from 'discord-interactions';
 import { askAndRespond, translateChannelMessages } from '../api/api.js';
 import { purgeChannel, editInteractionResponse } from '../api/discord.js';

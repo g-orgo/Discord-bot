@@ -19,8 +19,9 @@ export async function logChannelMessages(channelId) {
     const messages = await res.json();
     console.log(`[logchannel] Last ${messages.length} messages from channel ${channelId}:`);
     for (const msg of messages) {
+      const userTag = msg.author.discriminator ? `${msg.author.username}#${msg.author.discriminator}` : msg.author.username;
       console.log(
-        `  [${new Date(msg.timestamp).toISOString()}] ${msg.author.username}#${msg.author.discriminator}: ${msg.content}`,
+        `  [${new Date(msg.timestamp).toISOString()}] ${userTag}: ${msg.content}`,
       );
     }
   } catch (err) {
