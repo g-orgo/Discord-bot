@@ -7,6 +7,7 @@ RUN npm ci --omit=dev
 
 COPY app.js utils.js ./
 COPY api/ ./api/
+COPY handlers/ ./handlers/
 
 EXPOSE 3000
 
