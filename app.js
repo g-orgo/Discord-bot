@@ -1,32 +1,22 @@
 import {
-    InteractionResponseFlags,
     InteractionResponseType,
     InteractionType,
-    MessageComponentTypes,
     verifyKeyMiddleware,
 } from "discord-interactions";
 import "dotenv/config";
 import express from "express";
-import { askAndRespond, translateChannelMessages } from "./api/api.js";
-import { purgeChannel, editInteractionResponse } from "./api/discord.js";
+import { handleCommand } from "./handlers/commandHandler.js";
+import { handleComponent } from "./handlers/componentHandler.js";
 
-// Create an express app
 const app = express();
-// Get port, or default to 3000
 const PORT = process.env.PORT || 3000;
 
-/**
- * Interactions endpoint URL where Discord will send HTTP requests
- * Parse request body and verifies incoming requests using discord-interactions package
- */
 app.post(
     "/interactions",
     verifyKeyMiddleware(process.env.PUBLIC_KEY),
     async function (req, res) {
-        // Interaction type and data
-        const { type, id, data } = req.body;
+        const { type } = req.body;
 
-        // Log who sent this interaction (member for guilds, user for DMs/GDMs)
         const sender = req.body.member?.user ?? req.body.user;
         if (sender) {
             console.log(
@@ -34,97 +24,16 @@ app.post(
             );
         }
 
-        /**
-         * Handle verification requests
-         */
         if (type === InteractionType.PING) {
             return res.send({ type: InteractionResponseType.PONG });
         }
 
-        /**
-         * Handle slash command requests
-         * See https://discord.com/developers/docs/interactions/application-commands#slash-commands
-         */
         if (type === InteractionType.APPLICATION_COMMAND) {
-            const { name } = data;
-
-            // "clearchannel" command — defers immediately, purges all channel messages in background
-            if (name === "clearchannel") {
-                const channelId = req.body.channel_id;
-                const token = req.body.token;
-                purgeChannel(channelId)
-                    .then(async (count) => {
-                        await editInteractionResponse(token, `Done. Deleted ${count} message${count !== 1 ? 's' : ''}.`);
-                    })
-                    .catch(async () => {
-                        await editInteractionResponse(token, 'The bot is missing permissions to access this channel. Make sure it has **Read Message History**, **View Channel**, and **Manage Messages**.');
-                    });
-                return res.send({
-                    type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
-                    data: {
-                        flags:
-                            InteractionResponseFlags.IS_COMPONENTS_V2 |
-                            InteractionResponseFlags.EPHEMERAL,
-                    },
-                });
-            }
-
-            // "translatechannel" command — defers immediately, translates non-English messages in background
-            if (name === "translatechannel") {
-                translateChannelMessages(req.body.channel_id, req.body.token);
-                return res.send({
-                    type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
-                    data: {
-                        flags: InteractionResponseFlags.IS_COMPONENTS_V2,
-                    },
-                });
-            }
-
-            // "ask" command — defers immediately, calls LLM in background
-            if (name === "ask") {
-                const message = data.options[0].value;
-                askAndRespond(message, req.body.token);
-                return res.send({
-                    type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
-                    data: { flags: InteractionResponseFlags.IS_COMPONENTS_V2 },
-                });
-            }
-
-            console.error(`unknown command: ${name}`);
-            return res.status(400).json({ error: "unknown command" });
+            return handleCommand(req, res);
         }
 
-        /**
-         * Handle requests from interactive components
-         * See https://discord.com/developers/docs/components/using-message-components#using-message-components-with-interactions
-         */
         if (type === InteractionType.MESSAGE_COMPONENT) {
-            // custom_id set in payload when sending message component
-            const componentId = data.custom_id;
-
-            if (
-                componentId.startsWith("accept_button_") ||
-                componentId.startsWith("select_choice_")
-            ) {
-                // Challenge flow is disabled — game.js was removed. Return graceful error.
-                return res.send({
-                    type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-                    data: {
-                        flags:
-                            InteractionResponseFlags.EPHEMERAL |
-                            InteractionResponseFlags.IS_COMPONENTS_V2,
-                        components: [
-                            {
-                                type: MessageComponentTypes.TEXT_DISPLAY,
-                                content:
-                                    "This challenge is no longer available.",
-                            },
-                        ],
-                    },
-                });
-            }
-
-            return;
+            return handleComponent(req, res);
         }
 
         console.error("unknown interaction type", type);
