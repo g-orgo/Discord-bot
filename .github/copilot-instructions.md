@@ -24,7 +24,7 @@ Set the resulting URL as the **Interactions Endpoint URL** in the Discord Develo
 |---|---|
 | `app.js` | Express server — dispatches `PING`, `APPLICATION_COMMAND`, `MESSAGE_COMPONENT` |
 | `commands.js` | One-shot script to bulk-overwrite global slash commands |
-| `utils.js` | `DiscordRequest()`, `InstallGlobalCommands()`, `getRandomEmoji()`, `capitalize()` |
+| `utils.js` | `DiscordRequest()`, `InstallGlobalCommands()`, `getRandomEmoji()` |
 | `api/api.js` | LLM client — `askLLM()`, `askAndRespond()` |
 | `api/discord.js` | Discord API helpers — `logChannelMessages()`, `editInteractionResponse()` |
 
@@ -41,13 +41,6 @@ Per-file summaries are in `.claude/context/`.
 ```
 
 **ESM modules.** The project uses `"type": "module"` — use `import`/`export`, not `require`.
-
-**`activeGames` is in-memory.** State is lost on restart. No database — don't introduce persistence without discussion.
-
-**`/challenge` game flow (multi-step):**
-1. User runs `/challenge object:<x>` → stored in `activeGames[interactionId]`, Accept button sent
-2. Opponent clicks Accept → ephemeral select menu (`select_choice_<gameId>`) sent, original message deleted
-3. Opponent selects → `getResult()` called, result posted publicly, game entry deleted
 
 **`res.send` must be called inside each try/catch branch.** Discord interactions expire quickly — if `res.send` is placed after a try/catch block and the request throws, the interaction times out with no response. Always call `res.send` (or `return res.send`) in both the `try` and the `catch` branches independently:
 ```js
@@ -71,8 +64,6 @@ return res.send({ ... result ... }); // interaction may have already expired
 1. User runs `/ask message:<text>` → bot POSTs `{ message }` to `LLM_URL/chat` (raptor-llm)
 2. raptor-llm forwards the message to Ollama and returns `{ model, response }`
 3. Bot replies with the user's message and the AI response formatted as TEXT_DISPLAY
-
-**Adding a new RPS choice:** Update `RPSChoices` in `game.js` symmetrically — add the new key with its `description` and verbs for what it beats, and add it as a losing target in the keys it loses to.
 
 **Required `.env` variables:** `APP_ID`, `PUBLIC_KEY`, `DISCORD_TOKEN`, `PORT` (default 3000), `LLM_URL` (default `http://localhost:8000`).
 

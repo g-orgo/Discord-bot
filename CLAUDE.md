@@ -41,15 +41,6 @@ The bot uses Discord's HTTP interactions model — Discord POSTs to `/interactio
 1. `verifyKeyMiddleware` authenticates every incoming request using `PUBLIC_KEY`
 2. Dispatch on `InteractionType`: `PING` → pong, `APPLICATION_COMMAND` → command handlers, `MESSAGE_COMPONENT` → component handlers
 
-**`/challenge` game flow (multi-step):**
-1. User runs `/challenge object:<choice>` → bot stores game in `activeGames[interactionId]` and sends a message with an **Accept** button
-2. Opponent clicks Accept → bot sends an ephemeral select menu (`select_choice_<gameId>`) and deletes the original message
-3. Opponent selects their object → bot calls `getResult()`, posts the result publicly, and patches the ephemeral message; game entry is deleted from `activeGames`
-
-`activeGames` is an in-memory object — state is lost on restart.
-
 **Components v2:** All responses use `IS_COMPONENTS_V2` flag with `TEXT_DISPLAY` components instead of the legacy `content` field.
-
-**`game.js`:** Contains the `RPSChoices` map (rock, paper, scissors, cowboy, virus, computer, wumpus) which defines win/lose verbs. Adding a new choice requires updating this map symmetrically.
 
 **`commands.js`:** Run once to bulk-overwrite global slash commands via Discord's API. Re-run whenever commands change.

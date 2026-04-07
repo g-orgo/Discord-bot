@@ -18,8 +18,5 @@ Used by `commands.js`.
 ### `getRandomEmoji() → string`
 Returns a random emoji from a hardcoded list of 14 emojis.
 
-### `capitalize(str) → string`
-Uppercases the first character of a string.
-
 ## Imports
 - `dotenv/config` (side-effect: loads `.env`)

@@ -2,8 +2,8 @@
 
 Entry point for the Discord bot. Uses Express to receive HTTP POST interactions from Discord.
 
-## Date: 2026-04-06 (audit run 2)
-## Summary: `game.js` was missing from filesystem. Component handlers for `accept_button_*` and `select_choice_*` were calling `getShuffledOptions()` and `getResult()` without importing them — guaranteed ReferenceError crash. Both handlers replaced with a graceful ephemeral "not available" response. `activeGames` removed (dead state).
+## Date: 2026-04-07
+## Summary: `/challenge` command and all RPS game logic fully removed. `game.js` never existed in the filesystem. `componentHandler.js` simplified to empty stub. MESSAGE_COMPONENT dispatch removed from `app.js`. `activeGames` state removed.
 
 ## Setup
 - Loads env via `dotenv`
@@ -11,7 +11,7 @@ Entry point for the Discord bot. Uses Express to receive HTTP POST interactions 
 - All requests to `POST /interactions` are verified with `verifyKeyMiddleware(process.env.PUBLIC_KEY)`
 
 ## In-memory state
-- ~~`activeGames`~~ — removed. Challenge flow is disabled and `game.js` does not exist.
+None.
 
 ## Interaction dispatch
 
@@ -22,18 +22,9 @@ Returns `PONG` for Discord's endpoint verification.
 
 | Command | Behavior |
 |---|---|
-| `logchannel` | Calls `logChannelMessages()` from `api/discord.js`, replies ephemeral |
-| `translatechannel` | Defers immediately (ephemeral), calls `translateChannelMessages()` from `api/api.js` in background |
+| `clearchannel` | Defers immediately (ephemeral), calls `purgeChannel()` from `api/discord.js` in background |
+| `translatechannel` | Defers immediately, calls `translateChannelMessages()` from `api/api.js` in background |
 | `ask` | Defers immediately (`DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE`), calls `askAndRespond()` from `api/api.js` in background |
-| `test` | Replies with "hello world" + random emoji using `TEXT_DISPLAY` component |
-| *(challenge)* | Handler is **commented out** — command is not registered |
-
-### `MESSAGE_COMPONENT`
-
-| custom_id prefix | Behavior |
-|---|---|
-| `accept_button_<gameId>` | Returns ephemeral "Este desafio já não está disponível." (game.js removed) |
-| `select_choice_<gameId>` | Returns ephemeral "Este desafio já não está disponível." (game.js removed) |
 
 ## Flags / Components
 All responses use `IS_COMPONENTS_V2` flag. Messages use `TEXT_DISPLAY` components instead of legacy `content` field. Ephemeral responses combine `EPHEMERAL | IS_COMPONENTS_V2`.
@@ -49,8 +40,7 @@ Discord interaction tokens expire in ~3 seconds. **`res.send` must be called ins
 - `LLM_URL` — raptor-llm base URL (default `http://localhost:8000`)
 
 ## Imports
-- `discord-interactions`: `InteractionType`, `InteractionResponseType`, `InteractionResponseFlags`, `MessageComponentTypes`, `verifyKeyMiddleware`
-- `./utils.js`: `getRandomEmoji`
-- `./api/api.js`: `askAndRespond`, `translateChannelMessages`
-- `./api/discord.js`: `logChannelMessages`
-- ~~`./game.js`~~ — file removed; no longer imported
+- `discord-interactions`: `InteractionType`, `InteractionResponseType`, `verifyKeyMiddleware`
+- `dotenv/config` (side-effect)
+- `express`
+- `./handlers/commandHandler.js`: `handleCommand`

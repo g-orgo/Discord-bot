@@ -6,7 +6,6 @@ import {
 import "dotenv/config";
 import express from "express";
 import { handleCommand } from "./handlers/commandHandler.js";
-import { handleComponent } from "./handlers/componentHandler.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -31,10 +30,6 @@ app.post(
 
         if (type === InteractionType.APPLICATION_COMMAND) {
             return handleCommand(req, res);
-        }
-
-        if (type === InteractionType.MESSAGE_COMPONENT) {
-            return handleComponent(req, res);
         }
 
         console.error("unknown interaction type", type);

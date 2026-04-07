@@ -5,30 +5,6 @@ function isMissingAccess(err) {
   try { return JSON.parse(err.message)?.code === 50001; } catch { return false; }
 }
 
-const MISSING_ACCESS_MESSAGE = 'The bot is missing permissions to access this channel. Make sure it has **Read Message History**, **View Channel**, and **Manage Messages**.';
-
-/**
- * Fetches and logs the last 50 messages from a Discord channel.
- * Handles errors internally — never throws.
- * @param {string} channelId
- * @returns {Promise<void>}
- */
-export async function logChannelMessages(channelId) {
-  try {
-    const res = await DiscordRequest(`channels/${channelId}/messages?limit=50`, { method: 'GET' });
-    const messages = await res.json();
-    console.log(`[logchannel] Last ${messages.length} messages from channel ${channelId}:`);
-    for (const msg of messages) {
-      const userTag = msg.author.discriminator ? `${msg.author.username}#${msg.author.discriminator}` : msg.author.username;
-      console.log(
-        `  [${new Date(msg.timestamp).toISOString()}] ${userTag}: ${msg.content}`,
-      );
-    }
-  } catch (err) {
-    console.error('[logchannel] Error fetching messages:', err);
-  }
-}
-
 /**
  * Deletes all messages in a channel.
  * Uses bulk-delete for messages newer than 14 days (up to 100 at a time).
