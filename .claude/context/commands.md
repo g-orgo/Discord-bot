@@ -3,11 +3,11 @@
 One-shot script to register (bulk-overwrite) global slash commands with Discord. Run via `yarn register`.
 
 ## Date: 2026-04-07
-## Summary: `/logchannel` removed from registered commands (it was listed in context but never in commands.js). Active commands: `/ask`, `/translatechannel`, `/clearchannel`.
+## Summary: `/logchannel` removed from registered commands (it was listed in context but never in commands.js). `/ask` was renamed to `/message`. Active commands: `/message`, `/translatechannel`, `/clearchannel`.
 
 ## Commands registered
 
-### `/ask`
+### `/message`
 - `type: 1` (CHAT_INPUT)
 - `integration_types: [0, 1]` (guild + user installs)
 - `contexts: [0, 1, 2]` (guild, bot DM, private channel)

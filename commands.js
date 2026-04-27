@@ -1,8 +1,8 @@
 import "dotenv/config";
 import { InstallGlobalCommands } from "./utils.js";
 
-const ASK_COMMAND = {
-    name: "ask",
+const MESSAGE_COMMAND = {
+    name: "message",
     description: "Ask the AI a question",
     options: [
         {
@@ -35,7 +35,7 @@ const CLEAR_CHANNEL_COMMAND = {
 };
 
 const ALL_COMMANDS = [
-    ASK_COMMAND,
+    MESSAGE_COMMAND,
     TRANSLATE_CHANNEL_COMMAND,
     CLEAR_CHANNEL_COMMAND,
 ];

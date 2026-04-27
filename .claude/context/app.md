@@ -24,7 +24,7 @@ Returns `PONG` for Discord's endpoint verification.
 |---|---|
 | `clearchannel` | Defers immediately (ephemeral), calls `purgeChannel()` from `api/discord.js` in background |
 | `translatechannel` | Defers immediately, calls `translateChannelMessages()` from `api/api.js` in background |
-| `ask` | Defers immediately (`DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE`), calls `askAndRespond()` from `api/api.js` in background |
+| `message` | Defers immediately (`DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE`), calls `askAndRespond()` from `api/api.js` in background |
 
 ## Flags / Components
 All responses use `IS_COMPONENTS_V2` flag. Messages use `TEXT_DISPLAY` components instead of legacy `content` field. Ephemeral responses combine `EPHEMERAL | IS_COMPONENTS_V2`.

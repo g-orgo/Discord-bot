@@ -10,7 +10,7 @@ Node.js · ESM · Express · discord-interactions · dotenv
 
 | Command | Description |
 |---------|-------------|
-| `/ask <message>` | Ask the AI a question (proxied to `raptor-chatbot-llm`) |
+| `/message <message>` | Ask the AI a question (proxied to `raptor-chatbot-llm`) |
 | `/translatechannel` | Translate non-English messages in the channel to English |
 | `/clearchannel` | [DEBUG] Delete all messages in the current channel |
 
@@ -61,6 +61,6 @@ The bot uses Discord's **HTTP interactions model** — Discord POSTs every inter
 
 ## Related services
 
-- [`raptor-chatbot-llm`](https://github.com/g-orgo/Discord-bot-LLM) — LLM server that handles `/ask` responses
+- [`raptor-chatbot-llm`](https://github.com/g-orgo/Discord-bot-LLM) — LLM server that handles `/message` responses
 - [`raptor-chatbot-server`](https://github.com/g-orgo/Discord-bot-web-server) — Auth & history server
 - [`raptor-chatbot-web`](https://github.com/g-orgo/Discord-bot-web) — Web frontend

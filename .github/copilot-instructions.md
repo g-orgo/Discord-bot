@@ -60,8 +60,8 @@ try {
 return res.send({ ... result ... }); // interaction may have already expired
 ```
 
-**`/ask` LLM flow:**
-1. User runs `/ask message:<text>` → bot POSTs `{ message }` to `LLM_URL/chat` (raptor-llm)
+**`/message` LLM flow:**
+1. User runs `/message message:<text>` → bot POSTs `{ message }` to `LLM_URL/chat` (raptor-llm)
 2. raptor-llm forwards the message to Ollama and returns `{ model, response }`
 3. Bot replies with the user's message and the AI response formatted as TEXT_DISPLAY
 

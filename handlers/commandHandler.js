@@ -40,7 +40,7 @@ export async function handleCommand(req, res) {
     });
   }
 
-  if (name === 'ask') {
+  if (name === 'message') {
     const message = data.options[0].value;
     const discordUsername = req.body.member?.user?.username ?? req.body.user?.username ?? null;
     askAndRespond(message, req.body.token, discordUsername);

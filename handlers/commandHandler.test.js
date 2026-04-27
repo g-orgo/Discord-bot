@@ -51,8 +51,8 @@ describe('handleCommand', () => {
     expect(res.sent.type).toBe(InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE);
   });
 
-  it('responds with DEFERRED for /ask', async () => {
-    const req = mockReq('ask', { data: { name: 'ask', options: [{ value: 'what is 2+2?' }] } });
+  it('responds with DEFERRED for /message', async () => {
+    const req = mockReq('message', { data: { name: 'message', options: [{ value: 'what is 2+2?' }] } });
     const res = mockRes();
     await handleCommand(req, res);
     expect(res.sent.type).toBe(InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE);
