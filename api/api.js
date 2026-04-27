@@ -3,7 +3,7 @@ import { DiscordRequest } from '../utils.js';
 
 const LLM_URL = process.env.LLM_URL || 'http://localhost:8000';
 const AUTH_URL = process.env.AUTH_URL || 'http://localhost:3001';
-const DISCORD_BOT_SECRET = process.env.DISCORD_BOT_SECRET || 'raptor-bot-secret-change-in-prod';
+const DISCORD_BOT_SECRET = process.env.DISCORD_BOT_SECRET;
 
 function isMissingAccess(err) {
   try { return JSON.parse(err.message)?.code === 50001; } catch { return false; }
@@ -62,6 +62,11 @@ export async function askAndRespond(message, token, discordUsername = null) {
  * @returns {Promise<void>}
  */
 async function saveDiscordHistory(discordUsername, userMessage, botResponse) {
+  if (!DISCORD_BOT_SECRET) {
+    console.warn('[saveDiscordHistory] DISCORD_BOT_SECRET is not set. Skipping history sync.');
+    return;
+  }
+
   console.log(`[saveDiscordHistory] Saving history for Discord user: ${discordUsername}`);
   try {
     const res = await fetch(`${AUTH_URL}/discord/history`, {
