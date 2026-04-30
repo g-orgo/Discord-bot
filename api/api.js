@@ -96,17 +96,11 @@ async function saveDiscordHistory(discordUsername, userMessage, botResponse) {
  * @returns {Promise<string|null>} Translation string, or null if already English / on error.
  */
 export async function detectAndTranslate(text) {
-  const prompt =
-    'You are a translation tool. Follow these rules exactly:\n' +
-    '1. If the message is written entirely in English, respond with the single word: ENGLISH\n' +
-    '2. If the message contains any non-English text, translate the entire message to English. Output only the translated text — no language names, no explanations, no labels.\n\n' +
-    `Message: ${text}`;
-
   try {
-    const response = await fetch(`${LLM_URL}/generate`, {
+    const response = await fetch(`${LLM_URL}/translate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify({ message: text }),
     });
 
     if (!response.ok) throw new Error(`LLM returned ${response.status}`);
