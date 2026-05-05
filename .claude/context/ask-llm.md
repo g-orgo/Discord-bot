@@ -1,23 +1,28 @@
 # Context: raptor-chatbot — /message command & LLM integration
 
-**Date:** 2026-04-27
+**Date:** 2026-05-04
 
 ## Summary
-The `/message` command sends the user's message to raptor-llm's `POST /chat` endpoint via a deferred interaction pattern to avoid Discord's 3-second timeout. Logic is split across `api/api.js` and `api/discord.js`.
+The `/message` command uses a deferred-interaction flow and consumes only `{ model, response }` from the LLM `/chat` endpoint. When the response contains multiple alternatives, the bot presents up to three choices as buttons so the user can select the preferred final text.
 
-## Files
-- `commands.js` — `MESSAGE_COMMAND` (name: `message`, option: `message` string, required)
-- `app.js` — handler for `message`; immediately defers with `DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE`, then fires `askAndRespond()` in background
-- `api/api.js` — `askLLM(message)`: POSTs to `LLM_URL/chat`, returns response string (or fallback on error); `askAndRespond(message, token)`: calls LLM then edits the deferred interaction
-- `api/discord.js` — `editInteractionResponse(token, content)`: PATCHes `webhooks/.../messages/@original` with the final content
+## Files created/modified
+- `api/api.js` — normalizes chat payload as response-only and handles alternative extraction + button sessions
+- `api/api.test.js` — validates response-only chat payload behavior
+- `handlers/componentHandler.js` — applies button selections to update the original interaction message
+- `../raptor-chatbot-llm/routes/chat.py` — returns only `model` and `response`
+- `../raptor-chatbot-llm/schemas.py` — response model no longer includes extra metadata
 
 ## Deferred flow
-1. Discord sends `/message` interaction
-2. `app.js` immediately responds with `DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE` — Discord shows “Bot is thinking...”
-3. `askAndRespond()` runs in background (no timeout pressure)
-4. LLM responds — `editInteractionResponse()` patches the original message with the result
+1. Discord sends `/message` interaction.
+2. `app.js` immediately responds with `DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE`.
+3. `askAndRespond()` runs in background.
+4. The LLM returns `{ model, response }`, and the bot patches the original message.
+5. If multiple alternatives are detected, buttons are rendered so users can switch the selected option.
 
-## Decisions
-- `LLM_URL` read from `process.env.LLM_URL`, default `http://localhost:8000` — defined in `api/api.js`
-- All error handling is inside `api/` modules — `app.js` has zero try/catch
-- Response format: `**You:** <message>\n\n**Raptor:** <llm_response>`
+## Decisions made
+- Removed score/suggestion metadata from the chat API contract across all services.
+- Kept suggestion buttons in Discord as a UX convenience based on generated text alternatives.
+- Stored Discord history as plain user/bot text pairs.
+
+## Known issues or next steps
+- Alternative extraction is heuristic and may need tuning if the LLM output format changes.

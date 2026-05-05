@@ -10,7 +10,7 @@ Node.js · ESM · Express · discord-interactions · dotenv
 
 | Command | Description |
 |---------|-------------|
-| `/message <message>` | Ask the AI a question (proxied to `raptor-chatbot-llm`) |
+| `/message <message>` | Runs a staged rewrite pipeline in one continuously updated message, with an optional stop after the primary translation |
 | `/translatechannel` | Translate non-English messages in the channel to English |
 | `/clearchannel` | [DEBUG] Delete all messages in the current channel |
 
@@ -56,6 +56,16 @@ The bot uses Discord's **HTTP interactions model** — Discord POSTs every inter
    - `MESSAGE_COMPONENT` → `handlers/componentHandler.js`
 
 **Components v2:** All responses use the `IS_COMPONENTS_V2` flag with `TEXT_DISPLAY` components.
+
+**`/message` staged UX:** The bot edits a single deferred interaction message through these stages instead of sending multiple follow-ups:
+1. LinkedIn-style rewrite (`linkedinfy`)
+2. Context gate to preserve the original intent
+3. Translation of the primary message
+4. Checkpoint: the user can stop here or continue
+5. Alternative suggestion generation
+6. Context gate + translation for the additional suggestions
+
+This reduces unnecessary LLM work because steps 5 and 6 only run when the user explicitly asks for extra options.
 
 **`commands.js`:** Run once to bulk-register global slash commands via Discord's REST API. Re-run whenever commands are added or changed.
 
