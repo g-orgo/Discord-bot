@@ -17,3 +17,17 @@ Changed `/message` to use a staged, single-message interaction flow. The bot now
 # Known issues or next steps
 - The staged flow is only implemented for the Discord `/message` path; the web client still uses its own chat endpoints.
 - If the product needs explicit retry for the optional steps, add a `retry optional steps` button to the same message state machine.
+
+# Update (linkedinfy-sourced suggestions)
+
+## Summary
+Adjusted optional suggestion generation so alternatives now come from the same linkedinfy process using the original user message, instead of a separate suggestions-generation prompt path.
+
+## Files created/modified
+- api/api.js: `continuePipelineSuggestions` now calls `/chat/pipeline/linkedinfy`, extracts alternatives, and only uses finalize for context validation/cleanup.
+
+## Decisions made
+- Removed dedicated suggestions endpoints from the LLM pipeline. Optional alternatives now come directly from a second linkedinfy pass over the original user message, then are cleaned/deduplicated in the bot.
+
+## Known issues or next steps
+- If linkedinfy returns only one wording for highly constrained messages, optional suggestions can still collapse to one result after local cleanup/dedup.

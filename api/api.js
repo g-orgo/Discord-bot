@@ -30,19 +30,6 @@ function normalizeChatPayload(payload) {
   };
 }
 
-function normalizeSuggestionsPayload(payload) {
-  if (!Array.isArray(payload?.suggestions)) {
-    return { suggestions: [] };
-  }
-
-  return {
-    suggestions: payload.suggestions
-      .filter(value => typeof value === 'string')
-      .map(value => value.trim())
-      .filter(Boolean),
-  };
-}
-
 function cleanSuggestion(text) {
   const normalized = text
     .replace(/^[-*\d\.)\s]+/, '')
@@ -168,6 +155,19 @@ function extractResponseSuggestions(response) {
   }
 
   return [FALLBACK_RESPONSE];
+}
+
+function extractLinkedinfySuggestions(response) {
+  const normalized = typeof response === 'string' ? response.replace(/\r/g, '').trim() : '';
+  if (!normalized) {
+    return [];
+  }
+
+  const orSplit = normalized
+    .split(/\n\s*or\s*\n/i)
+    .map(part => cleanSuggestion(part));
+
+  return dedupeSuggestions(sanitizeSuggestionCandidates(orSplit));
 }
 
 function truncateLabel(text, max = 80) {
@@ -354,11 +354,6 @@ async function requestPipelineText(path, payload, headers = {}) {
   return normalizeChatPayload(json).response;
 }
 
-async function requestPipelineSuggestions(path, payload, headers = {}) {
-  const json = await postLLM(path, payload, headers);
-  return normalizeSuggestionsPayload(json).suggestions;
-}
-
 async function continuePipelineSuggestions(sessionId, discordUsername = null) {
   const session = getPipelineSession(sessionId);
   if (!session) {
@@ -372,17 +367,20 @@ async function continuePipelineSuggestions(sessionId, discordUsername = null) {
       session.token,
       formatPipelineProgress(
         session.userMessage,
-        'Generating alternative approaches...',
+        'Generating alternatives from your original linkedinfy context...',
         4,
         6,
         session.primaryMessage,
       ),
     );
 
-    const rawSuggestions = await requestPipelineSuggestions('/chat/pipeline/suggestions', {
-      original_message: session.userMessage,
-      primary_message: session.primaryMessage,
+    const linkedinfyResponse = await requestPipelineText('/chat/pipeline/linkedinfy', {
+      message: session.userMessage,
     });
+    const rawSuggestions = extractLinkedinfySuggestions(linkedinfyResponse);
+    const suggestionsToFinalize = rawSuggestions.length > 0
+      ? rawSuggestions
+      : [linkedinfyResponse];
 
     await editInteractionResponse(
       session.token,
@@ -392,14 +390,13 @@ async function continuePipelineSuggestions(sessionId, discordUsername = null) {
         5,
         6,
         session.primaryMessage,
-        `Generated ${rawSuggestions.length} option${rawSuggestions.length === 1 ? '' : 's'} for your choice.`,
+        `Generated ${suggestionsToFinalize.length} option${suggestionsToFinalize.length === 1 ? '' : 's'} for your choice.`,
       ),
     );
 
-    const finalizedSuggestions = await requestPipelineSuggestions('/chat/pipeline/suggestions/finalize', {
-      original_message: session.userMessage,
-      suggestions: rawSuggestions,
-    });
+    const finalizedSuggestions = dedupeSuggestions(
+      sanitizeSuggestionCandidates(suggestionsToFinalize),
+    );
 
     const suggestions = dedupeSuggestions(
       sanitizeSuggestionCandidates([session.primaryMessage, ...finalizedSuggestions]),
