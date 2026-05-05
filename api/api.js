@@ -1,7 +1,9 @@
-import { editInteractionResponse, sendInteractionFollowup } from './discord.js';
+import { editInteractionResponse } from './discord.js';
 import { DiscordRequest } from '../utils.js';
+import { ButtonStyleTypes, MessageComponentTypes } from 'discord-interactions';
 
 const LLM_URL = process.env.LLM_URL || 'http://localhost:8000';
+const LLM_MODEL = process.env.LLM_MODEL || null;
 const AUTH_URL = process.env.AUTH_URL || 'http://localhost:3001';
 const DISCORD_BOT_SECRET = process.env.DISCORD_BOT_SECRET;
 
@@ -12,28 +14,548 @@ function isMissingAccess(err) {
 const MISSING_ACCESS_MESSAGE = 'The bot is missing permissions to access this channel. Make sure it has **Read Message History** and **View Channel**.';
 
 const FALLBACK_RESPONSE = 'An error occurred while processing your message. Please try again.';
+const MAX_MESSAGE_SUGGESTIONS = 3;
+const SUGGESTION_SESSION_TTL_MS = 30 * 60 * 1000;
+const PIPELINE_SESSION_TTL_MS = 30 * 60 * 1000;
+const suggestionSessions = new Map();
+const pipelineSessions = new Map();
+
+function normalizeChatPayload(payload) {
+  const response = typeof payload?.response === 'string' && payload.response.trim()
+    ? payload.response
+    : FALLBACK_RESPONSE;
+
+  return {
+    response,
+  };
+}
+
+function normalizeSuggestionsPayload(payload) {
+  if (!Array.isArray(payload?.suggestions)) {
+    return { suggestions: [] };
+  }
+
+  return {
+    suggestions: payload.suggestions
+      .filter(value => typeof value === 'string')
+      .map(value => value.trim())
+      .filter(Boolean),
+  };
+}
+
+function cleanSuggestion(text) {
+  const normalized = text
+    .replace(/^[-*\d\.)\s]+/, '')
+    // Drop common model headings like: "Option 1: ..."
+    .replace(/^option\s*\d+\s*:\s*/i, '')
+    .replace(/\s*\[selected\]\s*$/i, '')
+    .replace(/^"|"$/g, '')
+    .trim();
+
+  // If heading and message came together, keep only the actual message body.
+  if (normalized.includes('\n')) {
+    const lines = normalized.split('\n').map(line => line.trim()).filter(Boolean);
+    if (lines.length >= 2) {
+      const [first, ...rest] = lines;
+      if (/^(focused on|emphasizing|tone|approach|style|version|alternative)\b/i.test(first)) {
+        return rest.join(' ').trim();
+      }
+    }
+  }
+
+  return normalized;
+}
+
+function isMetaSuggestion(text) {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+
+  if (normalized.length < 12) {
+    return true;
+  }
+
+  const blockedStarts = [
+    'option ',
+    "here's",
+    'here is',
+    'possible response',
+    'this response',
+    'suggestions',
+    'note:',
+    'explanation:',
+    'rewritten message',
+  ];
+
+  if (blockedStarts.some(prefix => normalized.startsWith(prefix))) {
+    return true;
+  }
+
+  const blockedContains = [
+    'here\'s a possible response',
+    'stays true to the original message',
+    'focused on the',
+    'emphasizing the',
+    'alternative version',
+    'maintains the original message',
+    'suitable for a business',
+    'choose with buttons',
+    'rephrasing',
+  ];
+
+  if (blockedContains.some(fragment => normalized.includes(fragment))) {
+    return true;
+  }
+
+  return false;
+}
+
+function sanitizeSuggestionCandidates(values) {
+  return values
+    .map(value => cleanSuggestion(value))
+    .filter(value => !isMetaSuggestion(value));
+}
+
+function dedupeSuggestions(values) {
+  const seen = new Set();
+  const result = [];
+  for (const value of values) {
+    const key = value.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(value);
+    if (result.length === MAX_MESSAGE_SUGGESTIONS) {
+      break;
+    }
+  }
+  return result;
+}
+
+function extractResponseSuggestions(response) {
+  const normalized = typeof response === 'string' ? response.replace(/\r/g, '').trim() : '';
+  if (!normalized) {
+    return [FALLBACK_RESPONSE];
+  }
+
+  const quoted = Array.from(normalized.matchAll(/"([^"\n]{4,})"/g)).map(match => cleanSuggestion(match[1]));
+  const quotedClean = dedupeSuggestions(sanitizeSuggestionCandidates(quoted));
+  if (quotedClean.length >= 2) {
+    return quotedClean;
+  }
+
+  const orSplit = normalized
+    .split(/\n\s*or\s*\n/i)
+    .map(part => cleanSuggestion(part));
+  const orSplitClean = dedupeSuggestions(sanitizeSuggestionCandidates(orSplit));
+  if (orSplitClean.length >= 2) {
+    return orSplitClean;
+  }
+
+  const lineSplit = normalized
+    .split(/\n+/)
+    .map(part => cleanSuggestion(part));
+  const lineSplitClean = dedupeSuggestions(sanitizeSuggestionCandidates(lineSplit));
+  if (lineSplitClean.length >= 2) {
+    return lineSplitClean;
+  }
+
+  const cleanedSingle = cleanSuggestion(normalized);
+  if (!isMetaSuggestion(cleanedSingle)) {
+    return [cleanedSingle || FALLBACK_RESPONSE];
+  }
+
+  return [FALLBACK_RESPONSE];
+}
+
+function truncateLabel(text, max = 80) {
+  if (text.length <= max) {
+    return text;
+  }
+  return `${text.slice(0, max - 3)}...`;
+}
+
+function buildSuggestionButtons(sessionId, suggestions) {
+  return [{
+    type: MessageComponentTypes.ACTION_ROW,
+    components: suggestions.map((suggestion, index) => ({
+      type: MessageComponentTypes.BUTTON,
+      style: ButtonStyleTypes.SECONDARY,
+      custom_id: `message_suggestion:${sessionId}:${index}`,
+      label: truncateLabel(suggestion),
+    })),
+  }];
+}
+
+function buildPipelineDecisionButtons(sessionId) {
+  return [{
+    type: MessageComponentTypes.ACTION_ROW,
+    components: [
+      {
+        type: MessageComponentTypes.BUTTON,
+        style: ButtonStyleTypes.PRIMARY,
+        custom_id: `message_pipeline:${sessionId}:finish`,
+        label: 'Use this message',
+      },
+      {
+        type: MessageComponentTypes.BUTTON,
+        style: ButtonStyleTypes.SECONDARY,
+        custom_id: `message_pipeline:${sessionId}:continue`,
+        label: 'Generate options',
+      },
+    ],
+  }];
+}
+
+function formatAlternatives(suggestions, selectedSuggestion) {
+  const lines = suggestions.map((suggestion, index) => {
+    const marker = suggestion === selectedSuggestion ? ' [selected]' : '';
+    return `${index + 1}. ${suggestion}${marker}`;
+  });
+  return lines.join('\n');
+}
+
+function formatMessageOutput(userMessage, selectedSuggestion, suggestions) {
+  if (suggestions.length <= 1) {
+    return `**You:** ${userMessage}\n\n**Raptor:** ${selectedSuggestion}`;
+  }
+
+  return [
+    `**You:** ${userMessage}`,
+    '',
+    `**Raptor:** ${selectedSuggestion}`,
+    '',
+    '**Suggestions (choose with buttons):**',
+    formatAlternatives(suggestions, selectedSuggestion),
+  ].join('\n');
+}
+
+function buildProgressBar(current, total) {
+  const filled = Math.floor((current / total) * 10);
+  const empty = 10 - filled;
+  const bar = '▓'.repeat(filled) + '░'.repeat(empty);
+  const percent = Math.round((current / total) * 100);
+  return `${bar} ${percent}%`;
+}
+
+function formatPipelineProgress(userMessage, status, stepNum, totalSteps, primaryMessage = null, detail = null) {
+  const lines = [
+    `**You:** ${userMessage}`,
+    '',
+    `**Progress:** ${buildProgressBar(stepNum, totalSteps)}`,
+    `**Raptor:** ${status}`,
+  ];
+
+  if (detail) {
+    lines.push('', detail);
+  }
+
+  if (primaryMessage) {
+    lines.push('', '**Current primary draft:**', primaryMessage);
+  }
+
+  return lines.join('\n');
+}
+
+function formatPipelineCheckpoint(userMessage, primaryMessage) {
+  return [
+    `**You:** ${userMessage}`,
+    '',
+    `**Progress:** ${buildProgressBar(3, 6)}`,
+    '**Raptor:** Primary draft ready. Choose whether to stop here or generate alternatives.',
+    '',
+    '**Primary message:**',
+    primaryMessage,
+  ].join('\n');
+}
+
+function formatPipelineFallback(userMessage, primaryMessage) {
+  return [
+    formatMessageOutput(userMessage, primaryMessage, [primaryMessage]),
+    '',
+    `**Progress:** ${buildProgressBar(4, 6)} (optional steps could not complete)`,
+  ].join('\n');
+}
+
+function createSuggestionSessionWithMeta(userMessage, suggestions, discordUsername = null) {
+  const sessionId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  suggestionSessions.set(sessionId, {
+    userMessage,
+    suggestions,
+    discordUsername,
+    lastSavedSuggestion: null,
+    expiresAt: Date.now() + SUGGESTION_SESSION_TTL_MS,
+  });
+  return sessionId;
+}
+
+function createPipelineSession({ userMessage, primaryMessage, token, discordUsername = null }) {
+  const sessionId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  pipelineSessions.set(sessionId, {
+    userMessage,
+    primaryMessage,
+    token,
+    discordUsername,
+    expiresAt: Date.now() + PIPELINE_SESSION_TTL_MS,
+  });
+  return sessionId;
+}
+
+function getSuggestionSession(sessionId) {
+  const session = suggestionSessions.get(sessionId);
+  if (!session) {
+    return null;
+  }
+
+  if (Date.now() > session.expiresAt) {
+    suggestionSessions.delete(sessionId);
+    return null;
+  }
+
+  return session;
+}
+
+function getPipelineSession(sessionId) {
+  const session = pipelineSessions.get(sessionId);
+  if (!session) {
+    return null;
+  }
+
+  if (Date.now() > session.expiresAt) {
+    pipelineSessions.delete(sessionId);
+    return null;
+  }
+
+  return session;
+}
+
+function addModelToPayload(payload) {
+  return LLM_MODEL ? { ...payload, model: LLM_MODEL } : payload;
+}
+
+async function postLLM(path, payload, headers = {}) {
+  const response = await fetch(`${LLM_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(addModelToPayload(payload)),
+  });
+
+  if (!response.ok) {
+    throw new Error(`LLM returned ${response.status}`);
+  }
+
+  return response.json();
+}
+
+async function requestPipelineText(path, payload, headers = {}) {
+  const json = await postLLM(path, payload, headers);
+  return normalizeChatPayload(json).response;
+}
+
+async function requestPipelineSuggestions(path, payload, headers = {}) {
+  const json = await postLLM(path, payload, headers);
+  return normalizeSuggestionsPayload(json).suggestions;
+}
+
+async function continuePipelineSuggestions(sessionId, discordUsername = null) {
+  const session = getPipelineSession(sessionId);
+  if (!session) {
+    return;
+  }
+
+  const usernameToSave = discordUsername || session.discordUsername;
+
+  try {
+    await editInteractionResponse(
+      session.token,
+      formatPipelineProgress(
+        session.userMessage,
+        'Generating alternative approaches...',
+        4,
+        6,
+        session.primaryMessage,
+      ),
+    );
+
+    const rawSuggestions = await requestPipelineSuggestions('/chat/pipeline/suggestions', {
+      original_message: session.userMessage,
+      primary_message: session.primaryMessage,
+    });
+
+    await editInteractionResponse(
+      session.token,
+      formatPipelineProgress(
+        session.userMessage,
+        'Validating alternatives...',
+        5,
+        6,
+        session.primaryMessage,
+        `Generated ${rawSuggestions.length} option${rawSuggestions.length === 1 ? '' : 's'} for your choice.`,
+      ),
+    );
+
+    const finalizedSuggestions = await requestPipelineSuggestions('/chat/pipeline/suggestions/finalize', {
+      original_message: session.userMessage,
+      suggestions: rawSuggestions,
+    });
+
+    const suggestions = dedupeSuggestions(
+      sanitizeSuggestionCandidates([session.primaryMessage, ...finalizedSuggestions]),
+    );
+    const selectedSuggestion = suggestions[0] || session.primaryMessage || FALLBACK_RESPONSE;
+
+    if (suggestions.length <= 1) {
+      await editInteractionResponse(session.token, formatMessageOutput(session.userMessage, selectedSuggestion, suggestions));
+      if (usernameToSave) {
+        await saveDiscordHistory(usernameToSave, session.userMessage, selectedSuggestion);
+      }
+      return;
+    }
+
+    const suggestionSessionId = createSuggestionSessionWithMeta(session.userMessage, suggestions, usernameToSave);
+    await editInteractionResponse(
+      session.token,
+      formatMessageOutput(session.userMessage, selectedSuggestion, suggestions),
+      buildSuggestionButtons(suggestionSessionId, suggestions),
+    );
+  } catch (err) {
+    console.error('[continuePipelineSuggestions] Error:', err);
+    const primaryMessage = session.primaryMessage || FALLBACK_RESPONSE;
+    await editInteractionResponse(session.token, formatPipelineFallback(session.userMessage, primaryMessage));
+    if (usernameToSave) {
+      await saveDiscordHistory(usernameToSave, session.userMessage, primaryMessage);
+    }
+  } finally {
+    pipelineSessions.delete(sessionId);
+  }
+}
+
+async function resolvePipelineSelection(customId, discordUsername = null) {
+  if (typeof customId !== 'string') {
+    return null;
+  }
+
+  const match = customId.match(/^message_pipeline:([a-z0-9]+):(finish|continue)$/i);
+  if (!match) {
+    return null;
+  }
+
+  const [, sessionId, action] = match;
+  const session = getPipelineSession(sessionId);
+  if (!session) {
+    return null;
+  }
+
+  const usernameToSave = discordUsername || session.discordUsername;
+
+  if (action === 'finish') {
+    pipelineSessions.delete(sessionId);
+    if (usernameToSave) {
+      await saveDiscordHistory(usernameToSave, session.userMessage, session.primaryMessage);
+    }
+    return {
+      content: formatMessageOutput(session.userMessage, session.primaryMessage, [session.primaryMessage]),
+      components: [],
+    };
+  }
+
+  void continuePipelineSuggestions(sessionId, usernameToSave);
+  return {
+    content: formatPipelineProgress(
+      session.userMessage,
+      'Generating alternative approaches...',
+      4,
+      6,
+      session.primaryMessage,
+    ),
+    components: [],
+  };
+}
+
+export function resolveSuggestionSelection(customId) {
+  if (typeof customId !== 'string') {
+    return null;
+  }
+
+  const match = customId.match(/^message_suggestion:([a-z0-9]+):(\d)$/i);
+  if (!match) {
+    return null;
+  }
+
+  const [, sessionId, indexRaw] = match;
+  const session = getSuggestionSession(sessionId);
+  if (!session) {
+    return null;
+  }
+
+  const index = Number.parseInt(indexRaw, 10);
+  const selectedSuggestion = session.suggestions[index];
+  if (!selectedSuggestion) {
+    return null;
+  }
+
+  return {
+    sessionId,
+    selectedSuggestion,
+    session,
+    content: formatMessageOutput(session.userMessage, selectedSuggestion, session.suggestions),
+    components: buildSuggestionButtons(sessionId, session.suggestions),
+  };
+}
+
+export async function resolveSuggestionSelectionAndSave(customId, discordUsername = null) {
+  const pipelineSelection = await resolvePipelineSelection(customId, discordUsername);
+  if (pipelineSelection) {
+    return pipelineSelection;
+  }
+
+  const selection = resolveSuggestionSelection(customId);
+  if (!selection) {
+    return null;
+  }
+
+  const session = selection.session;
+  const usernameToSave = discordUsername || session.discordUsername;
+
+  if (usernameToSave && selection.selectedSuggestion !== session.lastSavedSuggestion) {
+    await saveDiscordHistory(
+      usernameToSave,
+      session.userMessage,
+      selection.selectedSuggestion,
+    );
+    session.lastSavedSuggestion = selection.selectedSuggestion;
+  }
+
+  return {
+    content: selection.content,
+    components: selection.components,
+  };
+}
 
 /**
  * Sends a message to raptor-llm's /chat endpoint.
  * Handles errors internally — never throws.
  * @param {string} message
- * @returns {Promise<string>} The AI response text, or a fallback message on error.
+ * @param {Object} headers - Optional headers to pass to LLM (e.g., for personalization)
+ * @returns {Promise<{response: string}>} Chat payload.
  */
-export async function askLLM(message) {
+export async function askLLM(message, headers = {}) {
   try {
     const response = await fetch(`${LLM_URL}/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message }),
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify({ message, ...(LLM_MODEL ? { model: LLM_MODEL } : {}) }),
     });
 
     if (!response.ok) throw new Error(`LLM returned ${response.status}`);
 
     const json = await response.json();
-    return json.response;
+    return normalizeChatPayload(json);
   } catch (err) {
     console.error('[askLLM] Error calling raptor-llm:', err);
-    return FALLBACK_RESPONSE;
+    return normalizeChatPayload({ response: FALLBACK_RESPONSE });
   }
 }
 
@@ -42,14 +564,69 @@ export async function askLLM(message) {
  * Fire-and-forget — does not block the interaction response.
  * @param {string} message - The user's message.
  * @param {string} token - The Discord interaction token.
- * @param {string|null} discordUsername - Discord username of the sender (for history linking).
+ * @param {string|null} discordUsername - Discord username of the sender (for history linking & personalization).
  * @returns {Promise<void>}
  */
 export async function askAndRespond(message, token, discordUsername = null) {
-  const llmResponse = await askLLM(message);
-  await editInteractionResponse(token, `**You:** ${message}\n\n**Raptor:** ${llmResponse}`);
-  if (discordUsername) {
-    saveDiscordHistory(discordUsername, message, llmResponse);
+  try {
+    await editInteractionResponse(
+      token,
+      formatPipelineProgress(
+        message,
+        'Rewriting your message for maximum clarity and impact...',
+        1,
+        6,
+      ),
+    );
+
+    const linkedMessage = await requestPipelineText('/chat/pipeline/linkedinfy', { message });
+
+    await editInteractionResponse(
+      token,
+      formatPipelineProgress(
+        message,
+        'Validating that your intent was preserved...',
+        2,
+        6,
+        linkedMessage,
+      ),
+    );
+
+    const contextGatedMessage = await requestPipelineText('/chat/pipeline/context-gate', {
+      original_message: message,
+      candidate_message: linkedMessage,
+    });
+
+    await editInteractionResponse(
+      token,
+      formatPipelineProgress(
+        message,
+        'Translating the final version...',
+        3,
+        6,
+        contextGatedMessage,
+      ),
+    );
+
+    const primaryMessage = await requestPipelineText('/chat/pipeline/translate', {
+      message: contextGatedMessage,
+    });
+
+    const sessionId = createPipelineSession({
+      userMessage: message,
+      primaryMessage,
+      token,
+      discordUsername,
+    });
+
+    await editInteractionResponse(
+      token,
+      formatPipelineCheckpoint(message, primaryMessage),
+      buildPipelineDecisionButtons(sessionId),
+    );
+  } catch (err) {
+    console.error('[askAndRespond] Error during staged pipeline:', err);
+    await editInteractionResponse(token, formatMessageOutput(message, FALLBACK_RESPONSE, [FALLBACK_RESPONSE]));
   }
 }
 

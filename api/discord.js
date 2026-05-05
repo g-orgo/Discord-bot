@@ -75,6 +75,13 @@ export async function sendInteractionFollowup(token, content) {
   }
 }
 
+function buildTextDisplayPayload(content, extraComponents = []) {
+  return {
+    flags: InteractionResponseFlags.IS_COMPONENTS_V2,
+    components: [{ type: MessageComponentTypes.TEXT_DISPLAY, content }, ...extraComponents],
+  };
+}
+
 /**
  * Edits the original deferred interaction response via webhook.
  * Handles errors internally — never throws.
@@ -82,14 +89,11 @@ export async function sendInteractionFollowup(token, content) {
  * @param {string} content - The final message content.
  * @returns {Promise<void>}
  */
-export async function editInteractionResponse(token, content) {
+export async function editInteractionResponse(token, content, extraComponents = []) {
   try {
     await DiscordRequest(`webhooks/${process.env.APP_ID}/${token}/messages/@original`, {
       method: 'PATCH',
-      body: {
-        flags: InteractionResponseFlags.IS_COMPONENTS_V2,
-        components: [{ type: MessageComponentTypes.TEXT_DISPLAY, content }],
-      },
+      body: buildTextDisplayPayload(content, extraComponents),
     });
   } catch (err) {
     console.error('[editInteractionResponse] Error editing response:', err);
