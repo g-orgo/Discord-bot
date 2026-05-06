@@ -217,9 +217,13 @@ function formatAlternatives(suggestions, selectedSuggestion) {
   return lines.join('\n');
 }
 
+function formatFinalMessageOutput(userMessage, selectedSuggestion) {
+  return `**You:** ${userMessage}\n\n**Raptor:** ${selectedSuggestion}`;
+}
+
 function formatMessageOutput(userMessage, selectedSuggestion, suggestions) {
   if (suggestions.length <= 1) {
-    return `**You:** ${userMessage}\n\n**Raptor:** ${selectedSuggestion}`;
+    return formatFinalMessageOutput(userMessage, selectedSuggestion);
   }
 
   return [
@@ -354,6 +358,14 @@ async function requestPipelineText(path, payload, headers = {}) {
   return normalizeChatPayload(json).response;
 }
 
+async function translateSuggestions(suggestions) {
+  return Promise.all(
+    suggestions.map(async suggestion => requestPipelineText('/chat/pipeline/translate', {
+      message: suggestion,
+    })),
+  );
+}
+
 async function continuePipelineSuggestions(sessionId, discordUsername = null) {
   const session = getPipelineSession(sessionId);
   if (!session) {
@@ -398,8 +410,24 @@ async function continuePipelineSuggestions(sessionId, discordUsername = null) {
       sanitizeSuggestionCandidates(suggestionsToFinalize),
     );
 
+    await editInteractionResponse(
+      session.token,
+      formatPipelineProgress(
+        session.userMessage,
+        'Translating alternatives... ',
+        6,
+        6,
+        session.primaryMessage,
+        `Preparing ${finalizedSuggestions.length} option${finalizedSuggestions.length === 1 ? '' : 's'} in the final output language.`,
+      ),
+    );
+
+    const translatedSuggestions = dedupeSuggestions(
+      sanitizeSuggestionCandidates(await translateSuggestions(finalizedSuggestions)),
+    );
+
     const suggestions = dedupeSuggestions(
-      sanitizeSuggestionCandidates([session.primaryMessage, ...finalizedSuggestions]),
+      sanitizeSuggestionCandidates([session.primaryMessage, ...translatedSuggestions]),
     );
     const selectedSuggestion = suggestions[0] || session.primaryMessage || FALLBACK_RESPONSE;
 
@@ -453,7 +481,7 @@ async function resolvePipelineSelection(customId, discordUsername = null) {
       await saveDiscordHistory(usernameToSave, session.userMessage, session.primaryMessage);
     }
     return {
-      content: formatMessageOutput(session.userMessage, session.primaryMessage, [session.primaryMessage]),
+      content: formatFinalMessageOutput(session.userMessage, session.primaryMessage),
       components: [],
     };
   }
@@ -497,8 +525,8 @@ export function resolveSuggestionSelection(customId) {
     sessionId,
     selectedSuggestion,
     session,
-    content: formatMessageOutput(session.userMessage, selectedSuggestion, session.suggestions),
-    components: buildSuggestionButtons(sessionId, session.suggestions),
+    content: formatFinalMessageOutput(session.userMessage, selectedSuggestion),
+    components: [],
   };
 }
 
@@ -524,6 +552,8 @@ export async function resolveSuggestionSelectionAndSave(customId, discordUsernam
     );
     session.lastSavedSuggestion = selection.selectedSuggestion;
   }
+
+  suggestionSessions.delete(selection.sessionId);
 
   return {
     content: selection.content,
