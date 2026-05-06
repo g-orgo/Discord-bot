@@ -4,7 +4,12 @@ vi.mock('./discord.js', () => ({
   editInteractionResponse: vi.fn(() => Promise.resolve()),
 }));
 
-import { askLLM, askAndRespond, detectAndTranslate } from './api.js';
+import {
+  askLLM,
+  askAndRespond,
+  detectAndTranslate,
+  resolveSuggestionSelectionAndSave,
+} from './api.js';
 import { editInteractionResponse } from './discord.js';
 
 beforeEach(() => {
@@ -104,6 +109,143 @@ describe('askLLM', () => {
         }),
       ]),
     );
+  });
+
+  it('collapses a selected suggestion to the final user and Raptor pair', async () => {
+    let linkedinfyCallCount = 0;
+
+    vi.stubGlobal('fetch', vi.fn((url, options) => {
+      if (url.endsWith('/chat/pipeline/linkedinfy')) {
+        linkedinfyCallCount += 1;
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            response: linkedinfyCallCount === 1
+              ? 'Primary option'
+              : 'Primary option\nOr\nAlternative option',
+          }),
+        });
+      }
+
+      if (url.endsWith('/chat/pipeline/context-gate')) {
+        const body = JSON.parse(options.body);
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ response: body.candidate_message }),
+        });
+      }
+
+      if (url.endsWith('/chat/pipeline/translate')) {
+        const body = JSON.parse(options.body);
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ response: body.message }),
+        });
+      }
+
+      if (url.includes('/discord/history')) {
+        return Promise.resolve({
+          ok: true,
+          status: 201,
+          text: () => Promise.resolve(''),
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected URL: ${url}`));
+    }));
+
+    await askAndRespond('Mensagem original', 'interaction-token', 'raptor_user');
+
+    const checkpointCall = editInteractionResponse.mock.calls[3];
+    const actionRow = checkpointCall[2][0];
+    const continueId = actionRow.components.find(component => component.custom_id.includes(':continue')).custom_id;
+
+    const progressSelection = await resolveSuggestionSelectionAndSave(continueId, 'raptor_user');
+    expect(progressSelection.content).toContain('Generating alternative approaches');
+
+    await vi.waitFor(() => {
+      expect(editInteractionResponse.mock.calls.length).toBeGreaterThan(5);
+      expect(editInteractionResponse.mock.calls.some(call => call[2]?.length)).toBe(true);
+    });
+
+    const suggestionCall = [...editInteractionResponse.mock.calls].reverse().find(call => call[2]?.length);
+    const suggestionRow = suggestionCall[2][0];
+    const firstSuggestionId = suggestionRow.components[0].custom_id;
+
+    const selection = await resolveSuggestionSelectionAndSave(firstSuggestionId, 'raptor_user');
+
+    expect(selection).toEqual({
+      content: '**You:** Mensagem original\n\n**Raptor:** Primary option',
+      components: [],
+    });
+  });
+
+  it('translates optional suggestions before rendering the selection buttons', async () => {
+    vi.stubGlobal('fetch', vi.fn((url, options) => {
+      if (url.endsWith('/chat/pipeline/linkedinfy')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            response: 'Primary option\nOr\nEstou informando minha demissão prevista para a próxima semana com grande pesar.',
+          }),
+        });
+      }
+
+      if (url.endsWith('/chat/pipeline/context-gate')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ response: 'Primary option' }),
+        });
+      }
+
+      if (url.endsWith('/chat/pipeline/translate')) {
+        const body = JSON.parse(options.body);
+        if (body.message === 'Context-safe draft') {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ response: 'Primary option' }),
+          });
+        }
+
+        if (body.message === 'Primary option') {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ response: 'Primary option' }),
+          });
+        }
+
+        if (body.message === 'Estou informando minha demissão prevista para a próxima semana com grande pesar.') {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ response: 'I am informing you with great regret that my resignation is planned for next week.' }),
+          });
+        }
+      }
+
+      if (url.includes('/discord/history')) {
+        return Promise.resolve({
+          ok: true,
+          status: 201,
+          text: () => Promise.resolve(''),
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected URL: ${url}`));
+    }));
+
+    await askAndRespond('Mensagem original', 'interaction-token', 'raptor_user');
+
+    const checkpointCall = editInteractionResponse.mock.calls[3];
+    const continueId = checkpointCall[2][0].components.find(component => component.custom_id.includes(':continue')).custom_id;
+
+    await resolveSuggestionSelectionAndSave(continueId, 'raptor_user');
+
+    await vi.waitFor(() => {
+      const lastCall = editInteractionResponse.mock.calls.at(-1);
+      expect(lastCall?.[2]).toBeTruthy();
+      expect(lastCall[1]).toContain('I am informing you with great regret that my resignation is planned for next week.');
+      expect(lastCall[1]).not.toContain('Estou informando minha demissão prevista para a próxima semana com grande pesar.');
+    });
   });
 });
 
